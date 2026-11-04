@@ -194,7 +194,14 @@ CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Hysteria=y
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Client is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Server is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Simple_Obfs is not set
-# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Geoview is not set
+# Geoview is REQUIRED for sing-box split routing: passwall converts the
+# geosite/geoip tags (cn, gfw, ...) into sing-box .srs rule-sets with it and
+# disables split routing (the log reports a missing geoview component) when it
+# is absent.
+# The .dat data files themselves are downloaded at runtime by passwall's rule
+# manager (Loyalsoldier/MetaCubeX), so the v2ray-geodata package stays disabled
+# to keep the image small.
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Geoview=y
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SmartDNS is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_NaiveProxy is not set
