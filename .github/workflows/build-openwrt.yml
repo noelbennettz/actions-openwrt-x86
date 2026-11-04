@@ -206,26 +206,38 @@ jobs:
     - name: Upload firmware to release
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # The built-in github.token is used as a fallback: prefer the PAT so the
+        # step also works if the repository restricts the default token to read.
+        GH_TOKEN: ${{ secrets.ACTIONS_TRIGGER_PAT != '' && secrets.ACTIONS_TRIGGER_PAT || secrets.GITHUB_TOKEN }}
         TAG: ${{ steps.tag.outputs.release_tag }}
       run: |
-        set -euo pipefail
+        set -uo pipefail
         # 'gh release create' occasionally dies with transient API errors (the
         # previous action-gh-release attempt failed with "Too many retries."),
         # so retry the whole operation a few times before giving up.
+        echo "target dir : ${FIRMWARE:-<unset>}"
+        echo "tag         : $TAG"
+        ls -la "${FIRMWARE:-/nonexistent}" || true
+        gh auth status 2>&1 || true
         for i in $(seq 1 5); do
           echo "=== release attempt $i"
+          if out=$(gh release create "$TAG" --title "$TAG" \
+                     --notes-file openwrt/release.txt "$FIRMWARE"/* 2>&1); then
+            echo "release $TAG created"
+            echo "$out"
+            exit 0
+          fi
+          echo "$out"
+          echo "::error::release attempt $i failed: $(echo "$out" | tr '\n' ' ' | cut -c1-600)"
+          # if the release exists already, just (re)upload the assets
           if gh release view "$TAG" > /dev/null 2>&1; then
-            if gh release upload "$TAG" "$FIRMWARE"/* --clobber; then
+            if out=$(gh release upload "$TAG" "$FIRMWARE"/* --clobber 2>&1); then
               echo "assets uploaded to existing release $TAG"
+              echo "$out"
               exit 0
             fi
-          else
-            if gh release create "$TAG" --title "$TAG" \
-                 --notes-file openwrt/release.txt "$FIRMWARE"/*; then
-              echo "release $TAG created"
-              exit 0
-            fi
+            echo "$out"
+            echo "::error::asset upload attempt $i failed: $(echo "$out" | tr '\n' ' ' | cut -c1-600)"
           fi
           sleep 15
         done

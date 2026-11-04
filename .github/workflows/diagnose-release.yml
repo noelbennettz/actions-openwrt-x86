@@ -1,0 +1,55 @@
+#
+# Temporary diagnostic workflow: checks whether the built-in GITHUB_TOKEN and the
+# ACTIONS_TRIGGER_PAT can create a release in this repository. Run it manually
+# (Actions -> Diagnose_Release -> Run workflow); it takes a few seconds and the
+# failure reason shows up as an annotation.
+#
+name: Diagnose_Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - name: Probe with GITHUB_TOKEN
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          echo "gh: $(gh --version | head -1)"
+          gh auth status 2>&1 || true
+          echo "--- token headers:"
+          gh api -i "/repos/$GITHUB_REPOSITORY" 2>&1 | grep -iE '^HTTP/|x-oauth-scopes|x-accepted' || true
+          TAG="probe-$(date +%s)-gh"
+          echo "--- gh release create $TAG (GITHUB_TOKEN)"
+          if out=$(gh release create "$TAG" --title "$TAG" --notes probe 2>&1); then
+            echo "OK: $out"
+          else
+            echo "FAILED:"
+            echo "$out"
+            echo "::error::GITHUB_TOKEN release create failed: $(echo "$out" | tr '\n' ' ' | cut -c1-500)"
+          fi
+          gh release delete "$TAG" --cleanup-tag --yes 2>&1 || true
+
+      - name: Probe with ACTIONS_TRIGGER_PAT
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.ACTIONS_TRIGGER_PAT }}
+        run: |
+          set -uo pipefail
+          gh auth status 2>&1 || true
+          TAG="probe-$(date +%s)-pat"
+          echo "--- gh release create $TAG (PAT)"
+          if out=$(gh release create "$TAG" --title "$TAG" --notes probe 2>&1); then
+            echo "OK: $out"
+          else
+            echo "FAILED:"
+            echo "$out"
+            echo "::error::PAT release create failed: $(echo "$out" | tr '\n' ' ' | cut -c1-500)"
+          fi
+          gh release delete "$TAG" --cleanup-tag --yes 2>&1 || true
