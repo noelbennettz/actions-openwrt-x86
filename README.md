@@ -158,6 +158,28 @@ uci commit luci
 Argon is not included either - it would need its Git repository cloned into `package/`
 from `diy-part1.sh` (e.g. `jerrykuku/luci-theme-argon` + `luci-app-argon-config`).
 
+## Passwall
+
+`diy-part1.sh` prepends two feeds from the **Openwrt-Passwall organisation** (the
+project moved away from the `xiaorouji` account, the old URLs return 404):
+
+```
+src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
+src-git passwall_luci     https://github.com/Openwrt-Passwall/openwrt-passwall.git;main
+```
+
+They are placed first so their packages win over the identically named ones in the
+official feeds (`xray-core`, `sing-box`, `microsocks`, `smartdns`).
+
+Only the **sing-box (1.14.4)** and **Hysteria 2 (2.13.0)** cores are built; every other
+`INCLUDE_*` option is switched off (Xray, V2ray-Geodata/Plugin, Shadowsocks-Rust which
+would pull the Rust toolchain, ShadowsocksR, Simple-Obfs, Geoview, SmartDNS, Haproxy,
+NaiveProxy, Shadow-TLS). Transparent proxy runs in nftables mode (`firewall4`), which is
+selected automatically, and the required `dnsmasq-full` / `ip-full` /
+`kmod-nft-tproxy` / `kmod-nft-socket` packages were already part of the base config.
+
+LuCI entry point: **Services → Passwall**.
+
 ## Usage
 
 1. Fork this repository.
