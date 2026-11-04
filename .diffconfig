@@ -138,6 +138,30 @@ CONFIG_PACKAGE_iptables-mod-tarpit=y
 CONFIG_PACKAGE_ip6tables-extra=y
 CONFIG_PACKAGE_ip6tables-mod-nat=y
 
+# ---- Plug-in prerequisites (official packages only) ----
+# dnsmasq-full replaces the stripped-down dnsmasq: plug-ins need ipset/nftset
+# support and custom DHCP options, and the two packages cannot coexist.
+# CONFIG_PACKAGE_dnsmasq is not set
+CONFIG_PACKAGE_dnsmasq-full=y
+# ipset backend (disabled by default inside dnsmasq-full)
+CONFIG_PACKAGE_dnsmasq_full_ipset=y
+# nftset backend is enabled by default inside dnsmasq-full; keep it for
+# firewall4/nftables based plug-ins.
+
+# Full iproute2: the busybox 'ip' applet cannot do 'ip rule' / fwmark table routing
+CONFIG_PACKAGE_ip-full=y
+
+# TPROXY on the nftables side (legacy iptables TPROXY/U32/SOCKET are installed above)
+CONFIG_PACKAGE_kmod-nft-tproxy=y
+CONFIG_PACKAGE_kmod-nft-socket=y
+
+# netlink socket diagnostics, used by xray / sing-box for connection tracking
+CONFIG_PACKAGE_kmod-inet-diag=y
+CONFIG_PACKAGE_kmod-netlink-diag=y
+
+# TUN devices (transparent proxy / VPN style interfaces)
+CONFIG_PACKAGE_kmod-tun=y
+
 # ---- LuCI themes ----
 # bootstrap is the upstream default (pulled in by luci-light). Installing more than
 # one theme makes the "Theme" drop-down appear under System -> System -> Language and
