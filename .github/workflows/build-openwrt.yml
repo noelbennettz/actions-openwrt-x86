@@ -233,8 +233,11 @@ jobs:
         exit 1
 
     # ---- CI housekeeping: prune old caches / runs / releases (nothing to do with firmware contents) ----
+    # NOTE: this must only run on success. A failed run (e.g. the release upload
+    # after a finished compile) must not throw away the caches written by the last
+    # successful build - the cache only affects build speed, never the artifacts.
     - name: Prune old Actions caches
-      if: always()
+      if: success()
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
