@@ -172,11 +172,20 @@ They are placed first so their packages win over the identically named ones in t
 official feeds (`xray-core`, `sing-box`, `microsocks`, `smartdns`).
 
 Only the **sing-box (1.14.4)** and **Hysteria 2 (2.13.0)** cores are built; every other
-`INCLUDE_*` option is switched off (Xray, V2ray-Geodata/Plugin, Shadowsocks-Rust which
-would pull the Rust toolchain, ShadowsocksR, Simple-Obfs, Geoview, SmartDNS, Haproxy,
-NaiveProxy, Shadow-TLS). Transparent proxy runs in nftables mode (`firewall4`), which is
-selected automatically, and the required `dnsmasq-full` / `ip-full` /
-`kmod-nft-tproxy` / `kmod-nft-socket` packages were already part of the base config.
+`INCLUDE_*` option is switched off (Xray, V2ray-Plugin, Shadowsocks-Rust which would pull
+the Rust toolchain, ShadowsocksR, Simple-Obfs, SmartDNS, Haproxy, NaiveProxy, Shadow-TLS).
+
+Two extras are included on purpose:
+
+- `geoview` - passwall converts the geosite/geoip tags into sing-box `.srs` rule-sets with
+  it; without the binary split routing is disabled.
+- `v2ray-geodata` - `geoip.dat` and `geosite.dat` from Loyalsoldier are downloaded at
+  build time and installed to `/usr/share/v2ray/`, so split routing works on first boot even
+  when the router cannot reach GitHub to run passwall's online rule update.
+
+Transparent proxy runs in nftables mode (`firewall4`), which is selected automatically, and
+the required `dnsmasq-full` / `ip-full` / `kmod-nft-tproxy` / `kmod-nft-socket` packages
+were already part of the base config.
 
 LuCI entry point: **Services → Passwall**.
 

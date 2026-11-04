@@ -173,14 +173,14 @@ CONFIG_PACKAGE_luci-theme-bootstrap=y
 CONFIG_PACKAGE_luci-theme-openwrt-2020=y
 CONFIG_PACKAGE_luci-theme-material=y
 
-# ---- Passwall (LuCI only wants sing-box + hysteria2 cores) ----
+# ---- Passwall (only the sing-box and Hysteria 2 cores) ----
 # Feeds are added by diy-part1.sh (Openwrt-Passwall organisation, branch main).
-# Only the two cores that are actually used are built; every other INCLUDE_*
-# option is switched off default-y off to keep the build (and the image) small:
-#   - Xray, V2ray-Geodata, V2ray-Plugin, Xray-Plugin
+# Only what is actually used is built; every other INCLUDE_* option is switched
+# off to keep the build (and the image) small:
+#   - Xray, Xray-Plugin, V2ray-Plugin
 #   - Shadowsocks-Rust (would pull the whole Rust toolchain, +30-45 min)
 #   - ShadowsocksR-Libev, Simple-Obfs (shadowsocks only)
-#   - Geoview, SmartDNS, Haproxy, NaiveProxy, Shadow-TLS
+#   - SmartDNS, Haproxy, NaiveProxy, Shadow-TLS
 # dnsmasq-full / ip-full / nft TPROXY / kmod-nft-* are already selected above.
 CONFIG_PACKAGE_luci-app-passwall=y
 CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y
@@ -188,24 +188,26 @@ CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Hysteria=y
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray_Plugin is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Plugin is not set
-# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Geodata is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Client is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Server is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Client is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Server is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Simple_Obfs is not set
-# Geoview is REQUIRED for sing-box split routing: passwall converts the
-# geosite/geoip tags (cn, gfw, ...) into sing-box .srs rule-sets with it and
-# disables split routing (the log reports a missing geoview component) when it
-# is absent.
-# The .dat data files themselves are downloaded at runtime by passwall's rule
-# manager (Loyalsoldier/MetaCubeX), so the v2ray-geodata package stays disabled
-# to keep the image small.
-CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Geoview=y
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SmartDNS is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_NaiveProxy is not set
 # CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadow_TLS is not set
+
+# Geoview is REQUIRED for sing-box split routing: passwall converts the
+# geosite/geoip tags (cn, gfw, ...) into sing-box .srs rule-sets with it and
+# disables split routing (its log reports a missing geoview component) when the
+# binary is absent.
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Geoview=y
+# Ship the geo data files inside the image too: they are fetched at build time
+# from Loyalsoldier (geoip.dat / geosite.dat) and installed to /usr/share/v2ray/,
+# so split routing also works when the router itself cannot reach GitHub to run
+# passwall's online rule update.
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Geodata=y
 
 # ---- Web UI extras ----
 # HTTPS for LuCI: uhttpd generates a self-signed certificate with px5g at first
