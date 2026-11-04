@@ -14,7 +14,9 @@ name: Update_Checker
 on:
   workflow_dispatch:
   schedule:
-     - cron: 0 */8 * * *
+    # Monthly: the 30th at 00:00 UTC (GitHub cron is always UTC).
+    # Note: February has no 30th, so no scheduled run happens that month.
+    - cron: '0 0 30 * *'
 
 jobs:
   check:
