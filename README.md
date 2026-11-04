@@ -1,0 +1,172 @@
+# Actions-OpenWrt (official source, x86)
+
+A GitHub Actions firmware build repository based on the [P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt) template.
+
+## Current state
+
+- Source: **official OpenWrt** `https://github.com/openwrt/openwrt` (branch `openwrt-24.10`; set `REPO_BRANCH` to `master` in `.github/workflows/build-openwrt.yml` to follow snapshots)
+- Feeds: the official `feeds.conf.default` (packages / luci / routing / telephony), no third-party feeds
+- Config: `.diffconfig` (x86/64 generic), no custom patches and no private packages
+- CPU microcode: `intel-microcode` + `amd64-microcode`. The x86 kernel already has `CONFIG_MICROCODE` and
+  `MICROCODE_LATE_LOADING` built in, so the blobs are loaded automatically at boot from
+  `/lib/firmware/{intel-ucode,amd-ucode}`
+- NICs: 51 common wired NIC drivers plus 11 PHY drivers (see the list below)
+- LuCI: the official `luci` collection (status / system / network / firewall / package manager)
+  plus HTTPS (`luci-ssl`, self-signed certificate) and UPnP IGD (`luci-app-upnp` + `miniupnpd-nftables`)
+- Themes: `luci-theme-bootstrap` (upstream default), `luci-theme-openwrt-2020` (default look,
+  see below) and `luci-theme-material`, so the theme drop-down is available in
+  System → System → Language and Style
+- Firmware flashing from the web UI: built into `luci-mod-system` ("Backup / Flash Firmware"),
+  no extra package needed - it uploads an image to `/tmp/firmware.bin`, validates it with
+  `sysupgrade --test`, shows the SHA256 and offers "Force upgrade". Attended Sysupgrade
+  (ASU / `owut`) is deliberately not included.
+
+## Network driver list (`CONFIG_PACKAGE_kmod-*` in `.diffconfig`)
+
+| Vendor | Drivers |
+| --- | --- |
+| Intel | `e100` `e1000` `e1000e` `igb` `igbvf` `igc` `ixgbe` `ixgbevf` `i40e` `iavf` `dwmac-intel` |
+| Realtek | `r8169` (covers RTL8111/8168/8125 2.5G) `8139too` `8139cp` |
+| Atheros/Qualcomm | `atl1` `atl1c` `atl1e` `atl2` `alx` |
+| Aquantia | `atlantic` (AQC107/108/111/112 5G/10G) |
+| Broadcom | `tg3` `bnx2` `bnx2x` `bnxt-en` `b44` |
+| Marvell | `skge` `sky2` |
+| Mellanox | `mlx4-core` `mlx5-core` |
+| Other server NICs | `qlcnic` `be2net` `sfc` `sfc-falcon` `hinic` `lan743x` |
+| Virtualization / cloud | `amazon-ena` `amd-xgbe` `vmxnet3` |
+| Legacy / industrial / soft-router | `natsemi` `ne2k-pci` `pcnet32` `tulip` `3c59x` `via-rhine` `via-velocity` `sis190` `sis900` `r6040` `niu` `forcedeth` `et131x` |
+| PHY | `phy-realtek` `phy-marvell` `phy-marvell-10g` `phy-broadcom` `phy-aquantia` `phy-micrel` `phy-motorcomm` `phy-microchip` `phy-smsc` `phy-vitesse` `phy-amd` |
+| Virtual interfaces | `veth` `dummy` `ifb` `macvlan` `ipvlan` |
+
+Notes: `virtio-net` is built into the x86/64 kernel (`CONFIG_VIRTIO_NET=y`), no extra package is needed.
+The official tree has no `r8125` / `r8168`, 2.5G Realtek NICs are handled by `r8169`.
+
+## Artifacts
+
+- `openwrt-x86-64-generic-squashfs-combined.img.gz` (Legacy BIOS)
+- `openwrt-x86-64-generic-squashfs-combined-efi.img.gz` (UEFI)
+- Builds are uploaded as Actions artifacts and published as GitHub Releases
+
+## Files
+
+| File | Description |
+| --- | --- |
+| `.github/workflows/build-openwrt.yml` | Main build workflow |
+| `.github/workflows/update-checker.yml` | Polls the official sources and triggers a build on changes |
+| `.diffconfig` | Target / package configuration (copied to `openwrt/.config`) |
+| `diy-part1.sh` | Hook before `feeds update` (no-op by default) |
+| `diy-part2.sh` | Hook after `feeds install` (no-op by default) |
+
+## Note on the serial console (boot stall fix)
+
+Official x86 images always boot with `console=tty1 console=ttyS0,<baud>n8`, i.e. `/dev/console`
+is the **serial port**. On machines whose firmware exposes a COM port or serial console
+redirection (Intel AMT SOL, IPMI, phantom SuperIO UART) every write to that UART can stall,
+which makes the boot hang for several minutes.
+
+`diy-part2.sh` therefore patches `target/linux/x86/image/Makefile` and removes the serial
+console from the kernel command line and from the GRUB terminal list, so the image boots on
+the VGA console only. To get the serial console back, set `ENABLE_SERIAL_CONSOLE=1` at the
+top of `diy-part2.sh` and rebuild. After boot you can verify with:
+
+```
+cat /proc/cmdline     # expect only console=tty1
+cat /proc/consoles
+```
+
+## WAN protocols and IPv6
+
+Available in "Network → Interfaces → Add new interface" (the list is the intersection of
+the proto handlers reported by `ubus call network get_proto_handlers` and the protocol UI
+modules that are installed, so nothing whose back end is missing is offered):
+
+| Entry | proto | Back end |
+| --- | --- | --- |
+| Static address | `static` | netifd (built in) |
+| DHCP client | `dhcp` | netifd + busybox `udhcpc` |
+| Unmanaged | `none` | LuCI |
+| PPP | `ppp` | `ppp` |
+| PPPoE | `pppoe` | `ppp` + `ppp-mod-pppoe` |
+| DHCPv6 client | `dhcpv6` | `odhcp6c` (address + prefix delegation) |
+| Relay bridge | `relay` | `relayd` + `luci-proto-relay` |
+
+`diy-part2.sh` additionally removes the LuCI modules for **PPTP** and **PPPoA**
+(`HIDE_UNUSABLE_PROTOS`), because `ppp.sh` registers those handlers although no usable
+plug-in exists in 24.10 - without this they would show up in the dialog and then fail.
+
+Bonding is a **device**, not an interface protocol: with `kmod-bonding` installed, LuCI
+offers "Bonding/Aggregation device" in "Devices → Add device configuration" (the entry
+only appears when `/sys/module/bonding` exists). Create the bond device there and then use
+one of the protocols above on top of it. `proto-bonding` (legacy `proto bonding` for UCI)
+is installed as well but has no upstream LuCI page.
+
+IPv6 coverage: the kernel ships IPv6 built in, `odhcp6c` is the DHCPv6 client,
+`odhcpd-ipv6only` provides RA (SLAAC) plus the DHCPv6 server for the LAN, and
+`luci-proto-ipv6` provides the UI. Because OpenWrt's `/etc/init.d/sysctl` forces
+`accept_ra=0` on all interfaces, `files/etc/sysctl.d/20-ipv6-accept-ra.conf` sets
+`accept_ra=2` so that WAN SLAAC works out of the box; comment those lines out if you want
+strict RA filtering.
+
+## iptables / ip6tables support (for third-party plug-ins)
+
+`firewall4` (nftables) stays the system firewall, but the complete **legacy** xtables
+stack is built in as well, because most plug-ins still insert rules through the classic
+tools:
+
+- Userspace: `iptables-zz-legacy`, `ip6tables-zz-legacy`, `arptables-legacy`,
+  `ebtables-legacy` (+ `ebtables-legacy-utils`), `ipset`. The nft variants are *not*
+  installed, so `/usr/sbin/{ip,ip6,ar,eb}tables` all resolve to the legacy back end and
+  `iptables -V` reports `(legacy)`.
+- Tables: filter / mangle / nat / raw for both IPv4 and IPv6 (`kmod-ipt-{core,nat,raw}`,
+  `kmod-ip6tables`, `kmod-ipt-nat6`, `kmod-ipt-raw6`, `kmod-ip6tables-extra`), bridge and
+  ARP tables (`kmod-ebtables`, `-ipv4`, `-ipv6`, `kmod-arptables`), ipset
+  (`kmod-ipt-ipset` + `ipset`) and flow offload (`kmod-ipt-offload`).
+- 21 IPv4 extension packages from iptables itself (extra, conntrack-extra,
+  conntrack-label, filter, hashlimit, ipopt, iprange, ipsec, nat-extra, nflog, nfqueue,
+  physdev, rpfilter, socket, tee, tproxy, trace, u32, checksum, cluster, led) plus
+  `ip6tables-extra` / `ip6tables-mod-nat`.
+- 22 extra extension packages from xtables-addons (account, asn, chaos, condition, delude,
+  dhcpmac, dnetmap, fuzzy, geoip, iface, ipmark, ipp2p, ipv4options, length2, logmark,
+  lscan, proto, psd, quota2, rtpengine, sysrq, tarpit).
+- `CONFIG_IPTABLES_CONNLABEL=y` is required for `iptables-mod-conntrack-label`.
+
+Only `iptables-mod-lua` is left out (it would pull a full Lua runtime); add it if a plug-in
+really needs the Lua PacketScript match.
+
+## LuCI themes
+
+Three official themes are installed, so the "Theme" selector appears under
+System → System → Language and Style:
+
+| Theme | `mediaurlbase` | Notes |
+| --- | --- | --- |
+| OpenWrt 2020 | `/luci-static/openwrt2020` | flat, modern look - **default** after a fresh flash |
+| Material | `/luci-static/material` | Material Design, colourful, dark mode toggle |
+| Bootstrap | `/luci-static/bootstrap` | upstream default, actively maintained, dark mode via `prefers-color-scheme` |
+
+The default is decided by the theme's `uci-defaults` scripts, which run in file-name
+order (`30_luci-theme-bootstrap`, `30_luci-theme-material`,
+`30_luci-theme-openwrt-2020`), and the last one wins - hence openwrt2020. Change it at
+runtime with:
+
+```
+uci set luci.main.mediaurlbase=/luci-static/material
+uci commit luci
+```
+
+`luci-theme-openwrt` (the 18.06-era classic) is not installed. A third-party theme such as
+Argon is not included either - it would need its Git repository cloned into `package/`
+from `diy-part1.sh` (e.g. `jerrykuku/luci-theme-argon` + `luci-app-argon-config`).
+
+## Usage
+
+1. Fork this repository.
+2. Run `Build OpenWrt` manually from the Actions tab, or wait for `Update_Checker` to detect source changes.
+3. Download the firmware from the Release page after the build finishes.
+
+Default login address is `192.168.1.1` with no password.
+
+## Credits
+
+- [P3TERX](https://github.com/P3TERX/Actions-OpenWrt)
+- [OpenWrt](https://github.com/openwrt/openwrt)

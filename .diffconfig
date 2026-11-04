@@ -1,0 +1,265 @@
+#
+# Minimal official OpenWrt x86/64 (generic) configuration
+# The workflow copies this file to openwrt/.config, then 'make defconfig' fills in the rest
+#
+
+# Target platform
+CONFIG_TARGET_x86=y
+CONFIG_TARGET_x86_64=y
+CONFIG_TARGET_x86_64_DEVICE_generic=y
+
+# Image formats (official defaults; written out explicitly so they are easy to trim later)
+CONFIG_GRUB_IMAGES=y
+CONFIG_GRUB_EFI_IMAGES=y
+CONFIG_TARGET_IMAGES_GZIP=y
+# CONFIG_VMDK_IMAGES is not set
+# CONFIG_VDI_IMAGES is not set
+# CONFIG_VHDX_IMAGES is not set
+
+# Partition sizes (MiB)
+CONFIG_TARGET_KERNEL_PARTSIZE=16
+CONFIG_TARGET_ROOTFS_PARTSIZE=1024
+
+# Serial console: disabled at the image level by diy-part2.sh (ENABLE_SERIAL_CONSOLE=0).
+# Upstream x86 images always append "console=ttyS0,<baud>n8" as the last console=
+# entry, so /dev/console becomes the serial port; on boards with a COM port or
+# serial console redirection (AMT SOL / IPMI / phantom SuperIO UART) that UART can
+# stall and the boot hangs for minutes. TARGET_SERIAL itself is left at its default
+# ("ttyS0") because target/linux/x86/base-files.mk refuses an empty value.
+
+# Basic LuCI (from the official luci feed)
+CONFIG_PACKAGE_luci=y
+
+# ---- WAN protocols & IPv6 ----
+# IPv4/IPv6 base: IPv6 is built into the x86 kernel (there is no kmod-ipv6 package
+# any more) and CONFIG_IPV6 in Config-build.in is def_bool y.
+#   odhcp6c         -> DHCPv6 client on WAN (also does prefix delegation)
+#   odhcpd-ipv6only -> RA (SLAAC) + DHCPv6 server on LAN
+# SLAAC on the WAN side is handled by the kernel (accept_ra) together with odhcp6c.
+CONFIG_PACKAGE_luci-proto-ipv6=y
+CONFIG_PACKAGE_odhcp6c=y
+CONFIG_PACKAGE_odhcpd-ipv6only=y
+
+# Relay: 'relay' pseudo protocol (IPv6 relay / wireless relay). LuCI only offers it
+# when /usr/sbin/relayd exists, so relayd + luci-proto-relay are both needed.
+CONFIG_PACKAGE_relayd=y
+CONFIG_PACKAGE_luci-proto-relay=y
+
+# Bonding: netifd has native bonding support, and LuCI shows the
+# "Bonding/Aggregation device" type only when /sys/module/bonding exists, i.e. when
+# kmod-bonding is installed (its autoload entry loads the module at boot).
+# proto-bonding additionally provides the legacy 'bonding' interface protocol for
+# manual UCI use; upstream ships no LuCI page for it, so it never appears in the
+# Add-interface protocol list.
+CONFIG_PACKAGE_kmod-bonding=y
+CONFIG_PACKAGE_proto-bonding=y
+
+# ---- iptables / ip6tables (legacy backend, for third-party plug-ins) ----
+# firewall4 is nftables based, but most plug-ins still insert rules with the
+# classic tools, so the full legacy stack is installed here. The "legacy" variants
+# keep iptables -V reporting "(legacy)", provide every table (filter/mangle/nat/raw)
+# and do not replace firewall4. iptables-nft / ip6tables-nft are intentionally NOT
+# installed, so /usr/sbin/iptables and /usr/sbin/ip6tables resolve to legacy.
+CONFIG_PACKAGE_iptables-zz-legacy=y
+CONFIG_PACKAGE_ip6tables-zz-legacy=y
+CONFIG_PACKAGE_arptables-legacy=y
+CONFIG_PACKAGE_ebtables-legacy=y
+CONFIG_PACKAGE_ebtables-legacy-utils=y
+CONFIG_PACKAGE_ipset=y
+
+# Kernel side: tables + core modules. The iptables-mod-* packages below pull in
+# the remaining xt_* modules automatically.
+CONFIG_PACKAGE_kmod-ipt-core=y
+CONFIG_PACKAGE_kmod-ipt-nat=y
+CONFIG_PACKAGE_kmod-ipt-raw=y
+CONFIG_PACKAGE_kmod-ipt-conntrack=y
+CONFIG_PACKAGE_kmod-ipt-offload=y
+CONFIG_PACKAGE_kmod-ipt-ipset=y
+CONFIG_PACKAGE_kmod-ip6tables=y
+CONFIG_PACKAGE_kmod-ip6tables-extra=y
+CONFIG_PACKAGE_kmod-ipt-nat6=y
+CONFIG_PACKAGE_kmod-ipt-raw6=y
+CONFIG_PACKAGE_kmod-ebtables=y
+CONFIG_PACKAGE_kmod-ebtables-ipv4=y
+CONFIG_PACKAGE_kmod-ebtables-ipv6=y
+CONFIG_PACKAGE_kmod-arptables=y
+
+# iptables-mod-conntrack-label needs the connlabel build option of libxtables
+CONFIG_IPTABLES_CONNLABEL=y
+
+# IPv4 extensions shipped with iptables itself
+CONFIG_PACKAGE_iptables-mod-conntrack-extra=y
+CONFIG_PACKAGE_iptables-mod-conntrack-label=y
+CONFIG_PACKAGE_iptables-mod-extra=y
+CONFIG_PACKAGE_iptables-mod-filter=y
+CONFIG_PACKAGE_iptables-mod-hashlimit=y
+CONFIG_PACKAGE_iptables-mod-ipopt=y
+CONFIG_PACKAGE_iptables-mod-iprange=y
+CONFIG_PACKAGE_iptables-mod-ipsec=y
+CONFIG_PACKAGE_iptables-mod-nat-extra=y
+CONFIG_PACKAGE_iptables-mod-nflog=y
+CONFIG_PACKAGE_iptables-mod-nfqueue=y
+CONFIG_PACKAGE_iptables-mod-physdev=y
+CONFIG_PACKAGE_iptables-mod-rpfilter=y
+CONFIG_PACKAGE_iptables-mod-socket=y
+CONFIG_PACKAGE_iptables-mod-tee=y
+CONFIG_PACKAGE_iptables-mod-tproxy=y
+CONFIG_PACKAGE_iptables-mod-trace=y
+CONFIG_PACKAGE_iptables-mod-u32=y
+CONFIG_PACKAGE_iptables-mod-checksum=y
+CONFIG_PACKAGE_iptables-mod-cluster=y
+CONFIG_PACKAGE_iptables-mod-led=y
+
+# Extra match/target modules from xtables-addons (widely used by plug-ins)
+CONFIG_PACKAGE_iptables-mod-account=y
+CONFIG_PACKAGE_iptables-mod-asn=y
+CONFIG_PACKAGE_iptables-mod-chaos=y
+CONFIG_PACKAGE_iptables-mod-condition=y
+CONFIG_PACKAGE_iptables-mod-delude=y
+CONFIG_PACKAGE_iptables-mod-dhcpmac=y
+CONFIG_PACKAGE_iptables-mod-dnetmap=y
+CONFIG_PACKAGE_iptables-mod-fuzzy=y
+CONFIG_PACKAGE_iptables-mod-geoip=y
+CONFIG_PACKAGE_iptables-mod-iface=y
+CONFIG_PACKAGE_iptables-mod-ipmark=y
+CONFIG_PACKAGE_iptables-mod-ipp2p=y
+CONFIG_PACKAGE_iptables-mod-ipv4options=y
+CONFIG_PACKAGE_iptables-mod-length2=y
+CONFIG_PACKAGE_iptables-mod-logmark=y
+CONFIG_PACKAGE_iptables-mod-lscan=y
+CONFIG_PACKAGE_iptables-mod-proto=y
+CONFIG_PACKAGE_iptables-mod-psd=y
+CONFIG_PACKAGE_iptables-mod-quota2=y
+CONFIG_PACKAGE_iptables-mod-rtpengine=y
+CONFIG_PACKAGE_iptables-mod-sysrq=y
+CONFIG_PACKAGE_iptables-mod-tarpit=y
+
+# IPv6-only extensions
+CONFIG_PACKAGE_ip6tables-extra=y
+CONFIG_PACKAGE_ip6tables-mod-nat=y
+
+# ---- LuCI themes ----
+# bootstrap is the upstream default (pulled in by luci-light). Installing more than
+# one theme makes the "Theme" drop-down appear under System -> System -> Language and
+# Style; the last uci-defaults script wins, so openwrt-2020 (alphabetically last) is
+# the default look after a fresh flash. Switch at runtime with:
+#   uci set luci.main.mediaurlbase=/luci-static/material && uci commit luci
+# available values: /luci-static/bootstrap, /luci-static/openwrt2020, /luci-static/material
+CONFIG_PACKAGE_luci-theme-bootstrap=y
+CONFIG_PACKAGE_luci-theme-openwrt-2020=y
+CONFIG_PACKAGE_luci-theme-material=y
+
+# ---- Web UI extras ----
+# HTTPS for LuCI: uhttpd generates a self-signed certificate with px5g at first
+# boot. Plain HTTP keeps working on :80 as well; set
+# uhttpd.main.redirect_https=1 in /etc/config/uhttpd to force HTTPS.
+CONFIG_PACKAGE_luci-ssl=y
+
+# Attended Sysupgrade (ASU) is intentionally NOT included: no luci-app-attendedsysupgrade
+# and no owut. Flashing a locally built/custom image from the web UI does not need
+# them - luci-mod-system ships the "Backup / Flash Firmware" page which uploads an
+# image to /tmp/firmware.bin, validates it with 'sysupgrade --test', shows its
+# SHA256 and can force-flash an image that fails the format check.
+
+# UPnP IGD / NAT-PMP / PCP. firewall4 is nftables based, so pick the nftables
+# variant (it PROVIDES the virtual 'miniupnpd' that luci-app-upnp depends on).
+CONFIG_PACKAGE_luci-app-upnp=y
+CONFIG_PACKAGE_miniupnpd-nftables=y
+
+# CI use only (ccache speeds up builds; CONFIG_CCACHE is an invisible symbol and must be
+# enabled together with CONFIG_DEVEL, otherwise 'make defconfig' drops it)
+CONFIG_DEVEL=y
+CONFIG_CCACHE=y
+
+# Chinese translations (delete these two lines if not needed)
+CONFIG_LUCI_LANG_zh_Hans=y
+CONFIG_LUCI_LANG_zh_Hant=y
+
+# ==================== CPU microcode ====================
+# The x86 kernel already has CONFIG_MICROCODE and MICROCODE_LATE_LOADING built in, so the
+# kernel loads the blobs from /lib/firmware/{intel-ucode,amd-ucode} automatically at boot
+CONFIG_PACKAGE_intel-microcode=y
+CONFIG_PACKAGE_amd64-microcode=y
+
+# ==================== Common wired NIC drivers ====================
+# ---- Intel ----
+CONFIG_PACKAGE_kmod-e100=y
+CONFIG_PACKAGE_kmod-e1000=y
+CONFIG_PACKAGE_kmod-e1000e=y
+CONFIG_PACKAGE_kmod-igb=y
+CONFIG_PACKAGE_kmod-igbvf=y
+CONFIG_PACKAGE_kmod-igc=y
+CONFIG_PACKAGE_kmod-ixgbe=y
+CONFIG_PACKAGE_kmod-ixgbevf=y
+CONFIG_PACKAGE_kmod-i40e=y
+CONFIG_PACKAGE_kmod-iavf=y
+CONFIG_PACKAGE_kmod-dwmac-intel=y
+# ---- Realtek ----
+CONFIG_PACKAGE_kmod-r8169=y
+CONFIG_PACKAGE_kmod-8139too=y
+CONFIG_PACKAGE_kmod-8139cp=y
+# ---- Atheros/Qualcomm Attansic ----
+CONFIG_PACKAGE_kmod-atl1=y
+CONFIG_PACKAGE_kmod-atl1c=y
+CONFIG_PACKAGE_kmod-atl1e=y
+CONFIG_PACKAGE_kmod-atl2=y
+CONFIG_PACKAGE_kmod-alx=y
+# ---- Aquantia (AQC107/108/111/112 5G/10G) ----
+CONFIG_PACKAGE_kmod-atlantic=y
+# ---- Broadcom ----
+CONFIG_PACKAGE_kmod-tg3=y
+CONFIG_PACKAGE_kmod-bnx2=y
+CONFIG_PACKAGE_kmod-bnx2x=y
+CONFIG_PACKAGE_kmod-bnxt-en=y
+CONFIG_PACKAGE_kmod-b44=y
+# ---- NVIDIA nForce ----
+CONFIG_PACKAGE_kmod-forcedeth=y
+# ---- Marvell / SysKonnect ----
+CONFIG_PACKAGE_kmod-skge=y
+CONFIG_PACKAGE_kmod-sky2=y
+# ---- Mellanox ----
+CONFIG_PACKAGE_kmod-mlx4-core=y
+CONFIG_PACKAGE_kmod-mlx5-core=y
+# ---- QLogic / Emulex / Solarflare / Huawei / Microchip / Amazon / VMware / Agere ----
+CONFIG_PACKAGE_kmod-qlcnic=y
+CONFIG_PACKAGE_kmod-be2net=y
+CONFIG_PACKAGE_kmod-sfc=y
+CONFIG_PACKAGE_kmod-sfc-falcon=y
+CONFIG_PACKAGE_kmod-hinic=y
+CONFIG_PACKAGE_kmod-lan743x=y
+CONFIG_PACKAGE_kmod-amazon-ena=y
+CONFIG_PACKAGE_kmod-amd-xgbe=y
+CONFIG_PACKAGE_kmod-vmxnet3=y
+CONFIG_PACKAGE_kmod-et131x=y
+# ---- Legacy / industrial / common soft-router cards ----
+CONFIG_PACKAGE_kmod-natsemi=y
+CONFIG_PACKAGE_kmod-ne2k-pci=y
+CONFIG_PACKAGE_kmod-pcnet32=y
+CONFIG_PACKAGE_kmod-tulip=y
+CONFIG_PACKAGE_kmod-3c59x=y
+CONFIG_PACKAGE_kmod-via-rhine=y
+CONFIG_PACKAGE_kmod-via-velocity=y
+CONFIG_PACKAGE_kmod-sis190=y
+CONFIG_PACKAGE_kmod-sis900=y
+CONFIG_PACKAGE_kmod-r6040=y
+CONFIG_PACKAGE_kmod-niu=y
+
+# ---- Ethernet PHY drivers (required by many 2.5G/10G onboard NICs) ----
+CONFIG_PACKAGE_kmod-phy-realtek=y
+CONFIG_PACKAGE_kmod-phy-marvell=y
+CONFIG_PACKAGE_kmod-phy-marvell-10g=y
+CONFIG_PACKAGE_kmod-phy-broadcom=y
+CONFIG_PACKAGE_kmod-phy-aquantia=y
+CONFIG_PACKAGE_kmod-phy-micrel=y
+CONFIG_PACKAGE_kmod-phy-motorcomm=y
+CONFIG_PACKAGE_kmod-phy-microchip=y
+CONFIG_PACKAGE_kmod-phy-smsc=y
+CONFIG_PACKAGE_kmod-phy-vitesse=y
+CONFIG_PACKAGE_kmod-phy-amd=y
+
+# ---- Virtual / tunnel interfaces (Docker, VMs, ifb traffic shaping, ...) ----
+CONFIG_PACKAGE_kmod-veth=y
+CONFIG_PACKAGE_kmod-dummy=y
+CONFIG_PACKAGE_kmod-ifb=y
+CONFIG_PACKAGE_kmod-macvlan=y
+CONFIG_PACKAGE_kmod-ipvlan=y
