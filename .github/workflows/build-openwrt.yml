@@ -49,7 +49,7 @@ jobs:
     - name: Free Disk Space (Ubuntu)
       uses: jlumbroso/free-disk-space@main
       with:
-        tool-cache: true
+        preinstalled-runtimes: true
         android: true
         dotnet: true
         haskell: true
@@ -204,14 +204,33 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
-      uses: softprops/action-gh-release@v3
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: openwrt/release.txt
-        files: ${{ env.FIRMWARE }}/*
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ steps.tag.outputs.release_tag }}
+      run: |
+        set -euo pipefail
+        # 'gh release create' occasionally dies with transient API errors (the
+        # previous action-gh-release attempt failed with "Too many retries."),
+        # so retry the whole operation a few times before giving up.
+        for i in $(seq 1 5); do
+          echo "=== release attempt $i"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            if gh release upload "$TAG" "$FIRMWARE"/* --clobber; then
+              echo "assets uploaded to existing release $TAG"
+              exit 0
+            fi
+          else
+            if gh release create "$TAG" --title "$TAG" \
+                 --notes-file openwrt/release.txt "$FIRMWARE"/*; then
+              echo "release $TAG created"
+              exit 0
+            fi
+          fi
+          sleep 15
+        done
+        echo "ERROR: giving up on release upload after 5 attempts" >&2
+        exit 1
 
     # ---- CI housekeeping: prune old caches / runs / releases (nothing to do with firmware contents) ----
     - name: Prune old Actions caches
