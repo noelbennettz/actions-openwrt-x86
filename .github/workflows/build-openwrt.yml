@@ -209,6 +209,12 @@ jobs:
         # The built-in github.token is used as a fallback: prefer the PAT so the
         # step also works if the repository restricts the default token to read.
         GH_TOKEN: ${{ secrets.ACTIONS_TRIGGER_PAT != '' && secrets.ACTIONS_TRIGGER_PAT || secrets.GITHUB_TOKEN }}
+        # The checkout lives in ./main-repo, so the workspace root is NOT a git
+        # repository and 'gh' cannot infer the target repo from it
+        # ("failed to run git: fatal: not a git repository"). GH_REPO fixes that
+        # without changing the working directory, which would break the
+        # relative path of openwrt/release.txt.
+        GH_REPO: ${{ github.repository }}
         TAG: ${{ steps.tag.outputs.release_tag }}
       run: |
         set -uo pipefail
