@@ -4,9 +4,15 @@ A GitHub Actions firmware build repository based on the [P3TERX/Actions-OpenWrt]
 
 ## Current state
 
-- Source: **official OpenWrt** `https://github.com/openwrt/openwrt` (branch `openwrt-24.10`; set `REPO_BRANCH` to `master` in `.github/workflows/build-openwrt.yml` to follow snapshots)
+- Source: **official OpenWrt** `https://github.com/openwrt/openwrt` (branch `openwrt-25.12`, kernel 6.12).
+  The branch is not arbitrary: 25.12 is the first branch whose Go toolchain is 1.26, and the current
+  passwall packages need it (sing-box >= 1.25.5, hysteria >= 1.26, geoview >= 1.25); 24.10 ships
+  Go 1.23 and fails with `go.mod requires go >= 1.25.5 (running go 1.23.12; GOTOOLCHAIN=local)`.
 - Feeds: the official `feeds.conf.default` (packages / luci / routing / telephony), no third-party feeds
 - Config: `.diffconfig` (x86/64 generic), no custom patches and no private packages
+- Package manager: **apk** (25.12 switched away from opkg); the LuCI "Software" page and
+  passwall were checked for this, but note that any opkg-specific command in a plug-in will
+  no longer apply
 - CPU microcode: `intel-microcode` + `amd64-microcode`. The x86 kernel already has `CONFIG_MICROCODE` and
   `MICROCODE_LATE_LOADING` built in, so the blobs are loaded automatically at boot from
   `/lib/firmware/{intel-ucode,amd-ucode}`
@@ -92,7 +98,7 @@ modules that are installed, so nothing whose back end is missing is offered):
 
 `diy-part2.sh` additionally removes the LuCI modules for **PPTP** and **PPPoA**
 (`HIDE_UNUSABLE_PROTOS`), because `ppp.sh` registers those handlers although no usable
-plug-in exists in 24.10 - without this they would show up in the dialog and then fail.
+plug-in exists in 24.10/25.12 - without this they would show up in the dialog and then fail.
 
 Bonding is a **device**, not an interface protocol: with `kmod-bonding` installed, LuCI
 offers "Bonding/Aggregation device" in "Devices → Add device configuration" (the entry

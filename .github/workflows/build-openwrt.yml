@@ -21,8 +21,10 @@ on:
 
 env:
   REPO_URL: https://github.com/openwrt/openwrt
-  # Official source branch: openwrt-24.10 is the stable release branch; use 'master' for snapshots
-  REPO_BRANCH: openwrt-24.10
+  # Official source branch. 25.12 is required because its Go toolchain is 1.26 and
+  # the current passwall packages need it (sing-box >= 1.25.5, hysteria >= 1.26,
+  # geoview >= 1.25). The 24.10 branch only ships Go 1.23 and cannot build them.
+  REPO_BRANCH: openwrt-25.12
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: .diffconfig
   DIY_P1_SH: diy-part1.sh

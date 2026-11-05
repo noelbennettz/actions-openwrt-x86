@@ -70,7 +70,7 @@ fi
 # IPIP, relay when relayd is absent, bonding ...).
 #
 # Exception: ppp.sh registers pppoa and pptp even though the matching plug-ins are
-# not installed (24.10 has no PPTP client package at all and PPPoA needs
+# not installed (there is no PPTP client package at all and PPPoA needs
 # ppp-mod-pppoa plus ATM support), so those two would be listed and then fail.
 # Dropping their UI modules keeps the dialog limited to working protocols.
 HIDE_UNUSABLE_PROTOS=1

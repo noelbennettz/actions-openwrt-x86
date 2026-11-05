@@ -27,27 +27,27 @@ jobs:
     - name: Get Commit Hash
       id: getHash
       run: |
-        git clone https://github.com/openwrt/openwrt --filter=blob:none --depth=1 -b openwrt-24.10
+        git clone https://github.com/openwrt/openwrt --filter=blob:none --depth=1 -b openwrt-25.12
         cd openwrt
         echo "SHA_01=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
         cd
 
-        git clone https://github.com/openwrt/packages --filter=blob:none --depth=1 -b openwrt-24.10
+        git clone https://github.com/openwrt/packages --filter=blob:none --depth=1 -b openwrt-25.12
         cd packages
         echo "SHA_02=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
         cd
 
-        git clone https://github.com/openwrt/luci --filter=blob:none --depth=1 -b openwrt-24.10
+        git clone https://github.com/openwrt/luci --filter=blob:none --depth=1 -b openwrt-25.12
         cd luci
         echo "SHA_03=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
         cd
 
-        git clone https://github.com/openwrt/routing --filter=blob:none --depth=1 -b openwrt-24.10
+        git clone https://github.com/openwrt/routing --filter=blob:none --depth=1 -b openwrt-25.12
         cd routing
         echo "SHA_04=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
         cd
 
-        git clone https://github.com/openwrt/telephony --filter=blob:none --depth=1 -b openwrt-24.10
+        git clone https://github.com/openwrt/telephony --filter=blob:none --depth=1 -b openwrt-25.12
         cd telephony
         echo "SHA_05=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
         cd
