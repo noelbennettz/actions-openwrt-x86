@@ -150,9 +150,22 @@ jobs:
       id: compile
       run: |
         echo -e "$(nproc) thread compile"
-        # On failure retry with the same job count and verbose logs instead of -j1,
-        # which would spend the remaining hours recompiling and hit the 6h limit
-        make -j$(nproc) || make -j$(nproc) V=s
+        # Keep the full log and surface the first failing package as an ::error::
+        # annotation, so a failure can be diagnosed without downloading the log.
+        report_failure() {
+          echo "=== first error context ==="
+          grep -n -m1 -B3 -A25 -E 'Error [0-9]|error:' "$1" || tail -n 100 "$1"
+          echo "::error::compile failed: $(grep -m1 -B2 -A6 -E 'Error [0-9]' "$1" | tr '\n' ' ' | cut -c1-900)"
+        }
+        make -j$(nproc) 2>&1 | tee /tmp/build.log
+        rc=${PIPESTATUS[0]}
+        if [ "$rc" -ne 0 ]; then
+          report_failure /tmp/build.log
+          echo "=== retrying with V=s ==="
+          make -j$(nproc) V=s 2>&1 | tee -a /tmp/build.log
+          rc=${PIPESTATUS[0]}
+          [ "$rc" -ne 0 ] && { report_failure /tmp/build.log; exit "$rc"; }
+        fi
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         if [ -s DEVICE_NAME ]; then
