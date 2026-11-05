@@ -146,17 +146,18 @@ System → System → Language and Style:
 
 | Theme | `mediaurlbase` | Notes |
 | --- | --- | --- |
-| OpenWrt 2020 | `/luci-static/openwrt2020` | flat, modern look - **default** after a fresh flash |
-| Material | `/luci-static/material` | Material Design, colourful, dark mode toggle |
-| Bootstrap | `/luci-static/bootstrap` | upstream default, actively maintained, dark mode via `prefers-color-scheme` |
+| Material | `/luci-static/material` | Material Design, colourful, dark mode toggle - **default** |
+| OpenWrt 2020 | `/luci-static/openwrt2020` | flat design with the OpenWrt cyan accent |
+| Bootstrap | `/luci-static/bootstrap` | upstream default, dark mode via `prefers-color-scheme` |
 
-The default is decided by the theme's `uci-defaults` scripts, which run in file-name
-order (`30_luci-theme-bootstrap`, `30_luci-theme-material`,
-`30_luci-theme-openwrt-2020`), and the last one wins - hence openwrt2020. Change it at
-runtime with:
+Each theme package ships a `30_luci-theme-*` script that writes
+`luci.main.mediaurlbase`, and `/etc/init.d/boot` sources `/etc/uci-defaults` in
+file-name order. `files/etc/uci-defaults/50-luci-theme` therefore runs after all of them
+and sets Material, so the default does not depend on which theme package happens to
+sort last. Change it at runtime with:
 
 ```
-uci set luci.main.mediaurlbase=/luci-static/material
+uci set luci.main.mediaurlbase=/luci-static/openwrt2020   # or /luci-static/bootstrap
 uci commit luci
 ```
 
