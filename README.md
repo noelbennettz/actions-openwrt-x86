@@ -199,7 +199,7 @@ LuCI entry point: **Services → Passwall**.
 ## Usage
 
 1. Fork this repository.
-2. Run `Build OpenWrt` manually from the Actions tab, or wait for `Update_Checker` to detect source changes.
+2. Run `Build OpenWrt` manually from the Actions tab, or wait for `Update Checker` to detect source changes.
 3. Download the firmware from the Release page after the build finishes.
 
 Default login address is `192.168.1.1` with no password.

@@ -5,11 +5,11 @@
 # See /LICENSE for more information.
 #
 # https://github.com/smallprogram/OpenWrtAction
-# File: .github/workflows/Update_Checker.yml
+# File: .github/workflows/update-checker.yml
 # Description: Source code update checker
 #
 
-name: Update_Checker
+name: Update Checker
 
 on:
   workflow_dispatch:
