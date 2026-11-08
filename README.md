@@ -16,7 +16,13 @@ A GitHub Actions firmware build repository based on the [P3TERX/Actions-OpenWrt]
 - CPU microcode: `intel-microcode` + `amd64-microcode`. The x86 kernel already has `CONFIG_MICROCODE` and
   `MICROCODE_LATE_LOADING` built in, so the blobs are loaded automatically at boot from
   `/lib/firmware/{intel-ucode,amd-ucode}`
-- NICs: 51 common wired NIC drivers plus 11 PHY drivers (see the list below)
+- NICs: 79 wired NIC controller drivers plus 21 PHY drivers (= the 100 entries below),
+  including server adapters (Cisco VIC, AMD Pensando, Wangxun, Netronome) and the cloud NICs
+  (`gve` for GCE, `mana` for Azure, `ena` for AWS, `vmxnet3` for VMware)
+- VMs: KVM/QEMU (`virtio-net`), Hyper-V/Azure (`hv_netvsc`, `pci-hyperv`) and Xen
+  (`xen-netfront`) are built into the x86/64 kernel; nothing to configure
+- Languages: Arabic, Chinese (Simplified + Traditional), English, French, Russian and Spanish
+  - all six UN working languages (see "Translations")
 - LuCI: the official `luci` collection (status / system / network / firewall / package manager)
   plus HTTPS (`luci-ssl`, self-signed certificate) and UPnP IGD (`luci-app-upnp` + `miniupnpd-nftables`)
 - Themes: `luci-theme-bootstrap` (upstream default), `luci-theme-openwrt-2020` (default look,
@@ -27,25 +33,96 @@ A GitHub Actions firmware build repository based on the [P3TERX/Actions-OpenWrt]
   `sysupgrade --test`, shows the SHA256 and offers "Force upgrade". Attended Sysupgrade
   (ASU / `owut`) is deliberately not included.
 
-## Network driver list (`CONFIG_PACKAGE_kmod-*` in `.diffconfig`)
+## Network driver list (100 `CONFIG_PACKAGE_kmod-*` entries in `.diffconfig`)
 
-| Vendor | Drivers |
+79 Ethernet controller drivers plus 21 Ethernet PHY drivers. Counted per driver package, not
+per chip - `r8169` alone covers RTL8111/8168/8125, `igc` covers I225/I226, `tg3` covers the
+whole NetXtreme range.
+
+| Vendor | Drivers | Count |
+| --- | --- | --- |
+| Intel | `e100` `e1000` `e1000e` `igb` `igbvf` `igc` `ixgbe` `ixgbevf` `i40e` `iavf` `ice` `idpf` `dwmac-intel` | 13 |
+| Realtek | `r8169` (RTL8111/8168/8125) `8139too` `8139cp` | 3 |
+| Atheros/Qualcomm Attansic | `atl1` `atl1c` `atl1e` `atl2` `alx` | 5 |
+| Aquantia / Marvell AQtion | `atlantic` (AQC107/108/111/112) | 1 |
+| Broadcom | `tg3` `bnx2` `bnx2x` `bnxt-en` `b44` | 5 |
+| NVIDIA nForce | `forcedeth` | 1 |
+| Marvell / SysKonnect | `skge` `sky2` | 2 |
+| Mellanox ConnectX | `mlx4-core` `mlx5-core` | 2 |
+| Server / 10G+ | `qlcnic` `be2net` `sfc` `sfc-falcon` `sfc-siena` `hinic` `lan743x` `et131x` | 8 |
+| Cisco / AMD Pensando / Wangxun / Netronome | `enic` `ionic` `ngbe` `txgbe` `nfp` (+ helper `libwx`) | 5 |
+| Legacy / soft-router | `natsemi` `ne2k-pci` `pcnet32` `tulip` `3c59x` `via-rhine` `via-velocity` `sis190` `sis900` `r6040` | 10 |
+| USB Ethernet | `usb-net` `asix` `asix-ax88179` `aqc111` `cdc-ether` `cdc-eem` `cdc-ncm` `cdc-subset` `dm9601-ether` `kaweth` `lan78xx` `mcs7830` `pegasus` `rndis` `rtl8150` `rtl8152` `smsc75xx` `smsc95xx` `sr9700` | 19 |
+| Virtual / cloud | `vmxnet3` `amazon-ena` `gve` `mana` `amd-xgbe` | 5 |
+| PHY | `phy-realtek` `phy-marvell` `phy-marvell-10g` `phy-broadcom` `phy-aquantia` `phy-micrel` `phy-motorcomm` `phy-microchip` `phy-smsc` `phy-vitesse` `phy-amd` `phy-aeonsemi-as21xxx` `phy-airoha-en8811h` `phy-at803x` `phy-ax88796b` `phy-bcm7xxx` `phy-bcm84881` `phy-intel-xway` `phy-maxlinear` `phy-qca83xx` `phy-rtl8261n` | 21 |
+
+Notes:
+
+- `virtio-net`, `hv_netvsc`, `xen-netfront` and `veth` are built into the x86/64 kernel, no
+  package is needed for them (see the VM section below).
+- The official tree has no `r8125` / `r8168`, 2.5G Realtek NICs are handled by `r8169`.
+- `kmod-niu` was dropped: `niu` is SPARC-only and cannot be built for x86, the package would
+  have ended up empty.
+- Nine of the packages above (`enic`, `ionic`, `idpf`, `ngbe`, `txgbe`, `libwx`, `nfp`,
+  `gve`, `mana`) are **not** in the official feed. Their `kmod-*` definitions live in
+  `kernel-modules/Makefile`, and `diy-part1.sh` copies them to
+  `openwrt/package/kernel/extra-nics/` before `make defconfig`, otherwise those symbols
+  would be unknown and silently dropped.
+- `kmod-i2c-designware-platform` is pulled in by `txgbe` (it drives the SFP cage) and is not
+  counted among the 100.
+
+## KVM guests and cloud VMs
+
+No kernel config file has to be patched: OpenWrt writes the `KCONFIG` entry of every selected
+`kmod-*` package into the kernel `.config` as `=m` by itself
+(`scripts/package-metadata.pl` -> `$(LINUX_DIR)/.config.override`, see
+`include/kernel-defaults.mk`).
+
+| Hypervisor / cloud | NIC | State |
+| --- | --- | --- |
+| KVM, QEMU, Proxmox, OpenStack, OCI, Alibaba, Tencent, Huawei Cloud | `virtio-net` | built in (`CONFIG_VIRTIO_NET=y`, `CONFIG_VIRTIO_PCI=y`) |
+| Hyper-V, Azure Gen2 VMs | `hv_netvsc` | built in (`CONFIG_HYPERV_NET=y`, `CONFIG_PCI_HYPERV=y`, `CONFIG_HYPERVISOR_GUEST=y`) |
+| Xen (older AWS EC2, some VPS) | `xen-netfront` | built in (`CONFIG_XEN_NETDEV_FRONTEND=y`) |
+| Azure ACCELNET / newer Azure sizes | `mana` | `kmod-mana` |
+| AWS Nitro (c5/m5/r5/t3 ...) | `ena` | `kmod-amazon-ena` |
+| Google Compute Engine | `gve` (gVNIC) | `kmod-gve` |
+| VMware ESXi / vSphere | `vmxnet3` | `kmod-vmxnet3` (plus `e1000e`) |
+| Intel IPU / Mount Evans instances | `idpf` | `kmod-idpf` |
+
+Also installed for guest use: `kmod-tun`, `kmod-veth`, `kmod-macvlan`, `kmod-ipvlan`,
+`kmod-ifb`, `kmod-dummy`. `net_failover` / `failover` are built in as well.
+
+The Hyper-V and Xen drivers are compiled into the kernel (not modules) because
+`target/linux/x86/64/config-6.12` already sets them to `=y`, so a Gen2 Azure VM or a Xen
+guest gets its NIC before any module is loaded.
+
+## Translations
+
+All six UN working languages are installed - **Arabic (`ar`), Chinese Simplified
+(`zh_Hans` / `zh-cn`), Chinese Traditional (`zh_Hant` / `zh-tw`), English (source language,
+needs no package), French (`fr`), Russian (`ru`), Spanish (`es`)**.
+
+`.diffconfig` sets `CONFIG_LUCI_LANG_{ar,es,fr,ru,zh_Hans,zh_Hant}`. In `luci.mk` every
+translation package is declared as `DEFAULT:=LUCI_LANG_<lang>||(ALL&&m)`, and kconfig only
+honours that default when the parent component is selected as well, so exactly the
+components that are built receive the six languages and no unused app is pulled in:
+
+| Component | Languages |
 | --- | --- |
-| Intel | `e100` `e1000` `e1000e` `igb` `igbvf` `igc` `ixgbe` `ixgbevf` `i40e` `iavf` `dwmac-intel` |
-| Realtek | `r8169` (covers RTL8111/8168/8125 2.5G) `8139too` `8139cp` |
-| Atheros/Qualcomm | `atl1` `atl1c` `atl1e` `atl2` `alx` |
-| Aquantia | `atlantic` (AQC107/108/111/112 5G/10G) |
-| Broadcom | `tg3` `bnx2` `bnx2x` `bnxt-en` `b44` |
-| Marvell | `skge` `sky2` |
-| Mellanox | `mlx4-core` `mlx5-core` |
-| Other server NICs | `qlcnic` `be2net` `sfc` `sfc-falcon` `hinic` `lan743x` |
-| Virtualization / cloud | `amazon-ena` `amd-xgbe` `vmxnet3` |
-| Legacy / industrial / soft-router | `natsemi` `ne2k-pci` `pcnet32` `tulip` `3c59x` `via-rhine` `via-velocity` `sis190` `sis900` `r6040` `niu` `forcedeth` `et131x` |
-| PHY | `phy-realtek` `phy-marvell` `phy-marvell-10g` `phy-broadcom` `phy-aquantia` `phy-micrel` `phy-motorcomm` `phy-microchip` `phy-smsc` `phy-vitesse` `phy-amd` |
-| Virtual interfaces | `veth` `dummy` `ifb` `macvlan` `ipvlan` |
+| `luci-base` (includes the `luci-mod-system` / `-network` / `-status` strings - in 25.12 they live in `luci-base.po`) | ar, es, fr, ru, zh-cn, zh-tw |
+| `luci-app-firewall` | ar, es, fr, ru, zh-cn, zh-tw |
+| `luci-app-upnp` | ar, es, fr, ru, zh-cn, zh-tw |
+| `luci-app-package-manager` | ar, es, fr, ru, zh-cn, zh-tw |
+| `luci-app-passwall` | zh-cn only - upstream ships no other translation |
 
-Notes: `virtio-net` is built into the x86/64 kernel (`CONFIG_VIRTIO_NET=y`), no extra package is needed.
-The official tree has no `r8125` / `r8168`, 2.5G Realtek NICs are handled by `r8169`.
+The language is selected in **System → System → Language and Style**; Arabic switches the
+themes to right-to-left on its own. Adding another language later is one
+`CONFIG_LUCI_LANG_<lang>` line (the known languages are listed in `feeds/luci/luci.mk`) plus
+a rebuild.
+
+**Passwall caveat:** the upstream `openwrt-passwall` feed only carries `po/zh_Hans`, so its
+pages stay English for ar/es/fr/ru/zh-tw. Translating it means committing a `.po` file into
+the passwall feed - a feed change, not a configuration change, so it is not done here.
 
 ## Artifacts
 
@@ -60,8 +137,10 @@ The official tree has no `r8125` / `r8168`, 2.5G Realtek NICs are handled by `r8
 | `.github/workflows/build-openwrt.yml` | Main build workflow |
 | `.github/workflows/update-checker.yml` | Polls the official sources and triggers a build on changes |
 | `.diffconfig` | Target / package configuration (copied to `openwrt/.config`) |
-| `diy-part1.sh` | Hook before `feeds update` (no-op by default) |
-| `diy-part2.sh` | Hook after `feeds install` (no-op by default) |
+| `diy-part1.sh` | Hook before `feeds update`: adds the Passwall feeds, installs `kernel-modules/` into `package/kernel/extra-nics/` |
+| `diy-part2.sh` | Hook after `feeds install`: serial console fix, removes unusable protocol UI modules |
+| `kernel-modules/Makefile` | `kmod-*` definitions for NIC drivers the official feed does not package (`enic`, `ionic`, `idpf`, `libwx`, `ngbe`, `txgbe`, `nfp`, `gve`, `mana`) |
+| `files/` | Files copied into the image (default theme, sysctl) |
 
 ## Note on the serial console (boot stall fix)
 

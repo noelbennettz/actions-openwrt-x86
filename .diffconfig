@@ -233,7 +233,25 @@ CONFIG_PACKAGE_miniupnpd-nftables=y
 CONFIG_DEVEL=y
 CONFIG_CCACHE=y
 
-# Chinese translations (delete these two lines if not needed)
+# ==================== LuCI translations: all six UN working languages ====================
+# Arabic, Chinese (Simplified + Traditional), English, French, Russian, Spanish.
+# English is the source language of LuCI, so it needs no package.
+#
+# Setting CONFIG_LUCI_LANG_<lang> does not itself install anything: luci.mk gives
+# every translation package "DEFAULT:=LUCI_LANG_<lang>||(ALL&&m)", and kconfig only
+# honours that default when the parent component is selected as well. The result is
+# exactly the six languages for the components that are actually built:
+#   luci-base (covers luci-mod-system / -network / -status, their strings live in
+#              luci-base.po in 25.12), luci-app-firewall, luci-app-upnp,
+#   luci-app-package-manager and luci-app-passwall (Chinese only upstream).
+# No unused app or unused language is pulled in, so the image grows by the
+# translation catalogs only.
+# Arabic needs the RTL stylesheet that ships with luci-base; the themes handle
+# direction automatically once the language is selected.
+CONFIG_LUCI_LANG_ar=y
+CONFIG_LUCI_LANG_es=y
+CONFIG_LUCI_LANG_fr=y
+CONFIG_LUCI_LANG_ru=y
 CONFIG_LUCI_LANG_zh_Hans=y
 CONFIG_LUCI_LANG_zh_Hant=y
 
@@ -243,8 +261,27 @@ CONFIG_LUCI_LANG_zh_Hant=y
 CONFIG_PACKAGE_intel-microcode=y
 CONFIG_PACKAGE_amd64-microcode=y
 
-# ==================== Common wired NIC drivers ====================
-# ---- Intel ----
+# ==================== Wired NIC drivers: 100 packages ====================
+# 79 Ethernet controller drivers + 21 Ethernet PHY drivers, so that whatever
+# wired NIC a PC, mini PC, soft router or server shows up with is probed on
+# first boot. Counted per driver package, not per chip: r8169 alone covers the
+# whole RTL8111/8168/8125 family, igc covers I225/I226, tg3 covers the Broadcom
+# NetXtreme range and so on.
+#
+# Nothing has to be added to the kernel config by hand: the kernel symbol of
+# every selected kmod-* package is written as =m into the kernel .config by
+# scripts/package-metadata.pl (include/kernel-defaults.mk -> .config.override).
+#
+# Exception: kmod-enic, kmod-ionic, kmod-idpf, kmod-ngbe, kmod-txgbe,
+# kmod-libwx, kmod-nfp, kmod-gve and kmod-mana are not packaged by the
+# official feed at all, so their definitions live in kernel-modules/ and
+# diy-part1.sh copies them to package/kernel/extra-nics before the build.
+
+# ---- Intel: 13 ----
+# e100/e1000/e1000e = PRO/100, 8254x, 8257x/8256x
+# igb/igbvf = I210/I350, igc = I225/I226 2.5G, ice = E810 100G
+# ixgbe/ixgbevf = 82598/82599/X540/X550/X553, i40e/iavf = X710/XL710
+# idpf = Mount Evans IPU, dwmac-intel = Intel LGM/Keem Bay (stmmac based)
 CONFIG_PACKAGE_kmod-e100=y
 CONFIG_PACKAGE_kmod-e1000=y
 CONFIG_PACKAGE_kmod-e1000e=y
@@ -255,45 +292,64 @@ CONFIG_PACKAGE_kmod-ixgbe=y
 CONFIG_PACKAGE_kmod-ixgbevf=y
 CONFIG_PACKAGE_kmod-i40e=y
 CONFIG_PACKAGE_kmod-iavf=y
+CONFIG_PACKAGE_kmod-ice=y
+CONFIG_PACKAGE_kmod-idpf=y
 CONFIG_PACKAGE_kmod-dwmac-intel=y
-# ---- Realtek ----
+# ---- Realtek: 3 ----
 CONFIG_PACKAGE_kmod-r8169=y
 CONFIG_PACKAGE_kmod-8139too=y
 CONFIG_PACKAGE_kmod-8139cp=y
-# ---- Atheros/Qualcomm Attansic ----
+# ---- Atheros/Qualcomm Attansic: 5 ----
+# L1/L2 (atl1/atl2), L1E/L2E (atl1e/atl2e), AR81xx (alx)
 CONFIG_PACKAGE_kmod-atl1=y
 CONFIG_PACKAGE_kmod-atl1c=y
 CONFIG_PACKAGE_kmod-atl1e=y
 CONFIG_PACKAGE_kmod-atl2=y
 CONFIG_PACKAGE_kmod-alx=y
-# ---- Aquantia (AQC107/108/111/112 5G/10G) ----
+# ---- Aquantia/Marvell AQtion: 1 (AQC107/108/111/112 5G/10G) ----
 CONFIG_PACKAGE_kmod-atlantic=y
-# ---- Broadcom ----
+# ---- Broadcom: 5 ----
+# tg3 = NetXtreme/BCM57xx, bnx2 = NetXtreme II, bnx2x = NetXtreme II 10G/25G,
+# bnxt-en = NetXtreme-E, b44 = BCM440x
 CONFIG_PACKAGE_kmod-tg3=y
 CONFIG_PACKAGE_kmod-bnx2=y
 CONFIG_PACKAGE_kmod-bnx2x=y
 CONFIG_PACKAGE_kmod-bnxt-en=y
 CONFIG_PACKAGE_kmod-b44=y
-# ---- NVIDIA nForce ----
+# ---- NVIDIA nForce: 1 ----
 CONFIG_PACKAGE_kmod-forcedeth=y
-# ---- Marvell / SysKonnect ----
+# ---- Marvell / SysKonnect: 2 ----
 CONFIG_PACKAGE_kmod-skge=y
 CONFIG_PACKAGE_kmod-sky2=y
-# ---- Mellanox ----
+# ---- Mellanox ConnectX: 2 ----
 CONFIG_PACKAGE_kmod-mlx4-core=y
 CONFIG_PACKAGE_kmod-mlx5-core=y
-# ---- QLogic / Emulex / Solarflare / Huawei / Microchip / Amazon / VMware / Agere ----
+# ---- Server / 10G+ adapters: 8 ----
+# qlcnic = QLogic 82xx, be2net = Emulex OneConnect, sfc* = Solarflare SFC9000/
+# SFC9100/SFC9200, hinic = Huawei Hi1822, lan743x = Microchip LAN7430/7431,
+# et131x = Agere ET1310
 CONFIG_PACKAGE_kmod-qlcnic=y
 CONFIG_PACKAGE_kmod-be2net=y
 CONFIG_PACKAGE_kmod-sfc=y
 CONFIG_PACKAGE_kmod-sfc-falcon=y
+CONFIG_PACKAGE_kmod-sfc-siena=y
 CONFIG_PACKAGE_kmod-hinic=y
 CONFIG_PACKAGE_kmod-lan743x=y
-CONFIG_PACKAGE_kmod-amazon-ena=y
-CONFIG_PACKAGE_kmod-amd-xgbe=y
-CONFIG_PACKAGE_kmod-vmxnet3=y
 CONFIG_PACKAGE_kmod-et131x=y
-# ---- Legacy / industrial / common soft-router cards ----
+# ---- Cisco / Pensando / Wangxun / Netronome: 5 (local packages, see above) ----
+# enic = Cisco VIC 12xx/13xx/14xx, ionic = AMD Pensando DSC,
+# ngbe = Wangxun 1G/2.5G, txgbe = Wangxun 10G, nfp = Netronome NFP4000/6000
+CONFIG_PACKAGE_kmod-enic=y
+CONFIG_PACKAGE_kmod-ionic=y
+CONFIG_PACKAGE_kmod-libwx=y
+CONFIG_PACKAGE_kmod-ngbe=y
+CONFIG_PACKAGE_kmod-txgbe=y
+CONFIG_PACKAGE_kmod-nfp=y
+# txgbe needs the DesignWare I2C platform driver (it drives the SFP cage)
+CONFIG_PACKAGE_kmod-i2c-designware-platform=y
+# ---- Legacy / industrial / common soft-router cards: 10 ----
+# (kmod-niu is deliberately not listed: niu is SPARC-only and cannot be built
+#  for x86, the package would end up empty)
 CONFIG_PACKAGE_kmod-natsemi=y
 CONFIG_PACKAGE_kmod-ne2k-pci=y
 CONFIG_PACKAGE_kmod-pcnet32=y
@@ -304,9 +360,38 @@ CONFIG_PACKAGE_kmod-via-velocity=y
 CONFIG_PACKAGE_kmod-sis190=y
 CONFIG_PACKAGE_kmod-sis900=y
 CONFIG_PACKAGE_kmod-r6040=y
-CONFIG_PACKAGE_kmod-niu=y
 
-# ---- Ethernet PHY drivers (required by many 2.5G/10G onboard NICs) ----
+# ---- USB Ethernet adapters: 19 ----
+# RTL8152/8153/8156 (rtl8152), AX88179A (asix-ax88179), AQC111U/N (aqc111),
+# ASIX AX88x72 (asix), CDC-ECM/EEM/NCM/subset, DM9601, Kaweth, LAN7800/7510,
+# MCS7830, Pegasus, RNDIS, RTL8150, SMSC75xx/95xx, SR9700 + the usbnet core
+CONFIG_PACKAGE_kmod-usb-net=y
+CONFIG_PACKAGE_kmod-usb-net-asix=y
+CONFIG_PACKAGE_kmod-usb-net-asix-ax88179=y
+CONFIG_PACKAGE_kmod-usb-net-aqc111=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-ether=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-eem=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-ncm=y
+CONFIG_PACKAGE_kmod-usb-net-cdc-subset=y
+CONFIG_PACKAGE_kmod-usb-net-dm9601-ether=y
+CONFIG_PACKAGE_kmod-usb-net-kaweth=y
+CONFIG_PACKAGE_kmod-usb-net-lan78xx=y
+CONFIG_PACKAGE_kmod-usb-net-mcs7830=y
+CONFIG_PACKAGE_kmod-usb-net-pegasus=y
+CONFIG_PACKAGE_kmod-usb-net-rndis=y
+CONFIG_PACKAGE_kmod-usb-net-rtl8150=y
+CONFIG_PACKAGE_kmod-usb-net-rtl8152=y
+CONFIG_PACKAGE_kmod-usb-net-smsc75xx=y
+CONFIG_PACKAGE_kmod-usb-net-smsc95xx=y
+CONFIG_PACKAGE_kmod-usb-net-sr9700=y
+
+# ---- Ethernet PHY drivers: 21 ----
+# Required by many 2.5G/5G/10G onboard NICs and SFP modules; without the
+# matching PHY driver the MAC comes up but the link never establishes.
+# phy-realtek = RTL8201/8211/8221, phy-marvell(-10g) = 88E1xxx/88X3310,
+# phy-motorcomm = YT8511/YT8521/YT8531 (very common on 2.5G boards),
+# phy-micrel = KSZ8xxx, phy-microchip = LAN87xx, phy-intel-xway = Intel/Infineon
+# PHYs, phy-at803x / phy-qca83xx = Atheros/Qualcomm PHYs
 CONFIG_PACKAGE_kmod-phy-realtek=y
 CONFIG_PACKAGE_kmod-phy-marvell=y
 CONFIG_PACKAGE_kmod-phy-marvell-10g=y
@@ -318,6 +403,42 @@ CONFIG_PACKAGE_kmod-phy-microchip=y
 CONFIG_PACKAGE_kmod-phy-smsc=y
 CONFIG_PACKAGE_kmod-phy-vitesse=y
 CONFIG_PACKAGE_kmod-phy-amd=y
+CONFIG_PACKAGE_kmod-phy-aeonsemi-as21xxx=y
+CONFIG_PACKAGE_kmod-phy-airoha-en8811h=y
+CONFIG_PACKAGE_kmod-phy-at803x=y
+CONFIG_PACKAGE_kmod-phy-ax88796b=y
+CONFIG_PACKAGE_kmod-phy-bcm7xxx=y
+CONFIG_PACKAGE_kmod-phy-bcm84881=y
+CONFIG_PACKAGE_kmod-phy-intel-xway=y
+CONFIG_PACKAGE_kmod-phy-maxlinear=y
+CONFIG_PACKAGE_kmod-phy-qca83xx=y
+CONFIG_PACKAGE_kmod-phy-rtl8261n=y
+
+# ==================== KVM guests and cloud VMs ====================
+# Everything a virtual machine is likely to hand to the guest:
+#
+#   KVM/QEMU, Proxmox, OpenStack, OCI, Alibaba Cloud, Tencent Cloud,
+#   Huawei Cloud, Hetzner Cloud  -> virtio-net
+#   Hyper-V, Azure (Gen2 VMs)    -> hv_netvsc / netvsc
+#   Xen (older AWS EC2, some VPS) -> xen-netfront
+#
+# Those four drivers (plus virtio-pci, pci-hyperv, hv_vmbus, hv_balloon,
+# hv_storvsc, hv_utils, hv_timer) are ALREADY BUILT INTO the x86/64 kernel:
+#   target/linux/x86/64/config-6.12 has
+#     CONFIG_VIRTIO_NET=y  CONFIG_VIRTIO_PCI=y  CONFIG_HYPERVISOR_GUEST=y
+#     CONFIG_HYPERV=y      CONFIG_HYPERV_NET=y  CONFIG_PCI_HYPERV=y
+#     CONFIG_XEN_NETDEV_FRONTEND=y CONFIG_NET_FAILOVER=y
+# so no package and no kernel config change is needed for them.
+#
+# What still has to be packaged as a module:
+CONFIG_PACKAGE_kmod-vmxnet3=y      # VMware ESXi / vSphere / Workstation (e1000e also works)
+CONFIG_PACKAGE_kmod-amazon-ena=y   # AWS Nitro instances (c5/m5/r5/t3/...)
+CONFIG_PACKAGE_kmod-gve=y          # Google Compute Engine gVNIC
+CONFIG_PACKAGE_kmod-mana=y         # Azure ACCELNET / MANA (newer Azure NICs)
+CONFIG_PACKAGE_kmod-amd-xgbe=y     # AMD 10GbE on SoC (some EPYC/embedded boards)
+
+# virtio_net also needs the tunnel/virtual interfaces selected further down
+# (kmod-tun, kmod-veth, kmod-dummy, kmod-macvlan, kmod-ipvlan).
 
 # ---- Virtual / tunnel interfaces (Docker, VMs, ifb traffic shaping, ...) ----
 CONFIG_PACKAGE_kmod-veth=y
