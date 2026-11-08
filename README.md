@@ -16,7 +16,7 @@ A GitHub Actions firmware build repository based on the [P3TERX/Actions-OpenWrt]
 - CPU microcode: `intel-microcode` + `amd64-microcode`. The x86 kernel already has `CONFIG_MICROCODE` and
   `MICROCODE_LATE_LOADING` built in, so the blobs are loaded automatically at boot from
   `/lib/firmware/{intel-ucode,amd-ucode}`
-- NICs: 79 wired NIC controller drivers plus 21 PHY drivers (= the 100 entries below),
+- NICs: 80 network device drivers plus 20 PHY drivers (= the 100 entries below),
   including server adapters (Cisco VIC, AMD Pensando, Wangxun, Netronome) and the cloud NICs
   (`gve` for GCE, `mana` for Azure, `ena` for AWS, `vmxnet3` for VMware)
 - VMs: KVM/QEMU (`virtio-net`), Hyper-V/Azure (`hv_netvsc`, `pci-hyperv`) and Xen
@@ -49,12 +49,12 @@ whole NetXtreme range.
 | NVIDIA nForce | `forcedeth` | 1 |
 | Marvell / SysKonnect | `skge` `sky2` | 2 |
 | Mellanox ConnectX | `mlx4-core` `mlx5-core` | 2 |
-| Server / 10G+ | `qlcnic` `be2net` `sfc` `sfc-falcon` `sfc-siena` `hinic` `lan743x` `et131x` | 8 |
+| Server / 10G+ | `qlcnic` `be2net` `sfc` `sfc-falcon` `sfc-siena` `hinic` `lan743x` `et131x` `mhi-net` | 9 |
 | Cisco / AMD Pensando / Wangxun / Netronome | `enic` `ionic` `ngbe` `txgbe` `nfp` (+ helper `libwx`) | 5 |
 | Legacy / soft-router | `natsemi` `ne2k-pci` `pcnet32` `tulip` `3c59x` `via-rhine` `via-velocity` `sis190` `sis900` `r6040` | 10 |
 | USB Ethernet | `usb-net` `asix` `asix-ax88179` `aqc111` `cdc-ether` `cdc-eem` `cdc-ncm` `cdc-subset` `dm9601-ether` `kaweth` `lan78xx` `mcs7830` `pegasus` `rndis` `rtl8150` `rtl8152` `smsc75xx` `smsc95xx` `sr9700` | 19 |
 | Virtual / cloud | `vmxnet3` `amazon-ena` `gve` `mana` `amd-xgbe` | 5 |
-| PHY | `phy-realtek` `phy-marvell` `phy-marvell-10g` `phy-broadcom` `phy-aquantia` `phy-micrel` `phy-motorcomm` `phy-microchip` `phy-smsc` `phy-vitesse` `phy-amd` `phy-aeonsemi-as21xxx` `phy-airoha-en8811h` `phy-at803x` `phy-ax88796b` `phy-bcm7xxx` `phy-bcm84881` `phy-intel-xway` `phy-maxlinear` `phy-qca83xx` `phy-rtl8261n` | 21 |
+| PHY | `phy-realtek` `phy-marvell` `phy-marvell-10g` `phy-broadcom` `phy-aquantia` `phy-micrel` `phy-motorcomm` `phy-microchip` `phy-smsc` `phy-vitesse` `phy-amd` `phy-aeonsemi-as21xxx` `phy-airoha-en8811h` `phy-ax88796b` `phy-bcm7xxx` `phy-bcm84881` `phy-intel-xway` `phy-maxlinear` `phy-qca83xx` `phy-rtl8261n` | 20 |
 
 Notes:
 
@@ -63,11 +63,22 @@ Notes:
 - The official tree has no `r8125` / `r8168`, 2.5G Realtek NICs are handled by `r8169`.
 - `kmod-niu` was dropped: `niu` is SPARC-only and cannot be built for x86, the package would
   have ended up empty.
-- Nine of the packages above (`enic`, `ionic`, `idpf`, `ngbe`, `txgbe`, `libwx`, `nfp`,
-  `gve`, `mana`) are **not** in the official feed. Their `kmod-*` definitions live in
+- `kmod-phy-at803x` was dropped as well: `AT803X_PHY` has `depends on REGULATOR` and
+  `target/linux/generic/config-6.12` ships `# CONFIG_REGULATOR is not set`, so the symbol can
+  never be built here. The AR803x PHYs only appear on ARM/embedded boards.
+- Nine of the packages above (`enic`, `ionic`, `idpf`, `ngbe`, `txgbe`, `libwx`,
+  `nfp`, `gve`, `mana`) are **not** in the official feed. Their `kmod-*` definitions live in
   `kernel-modules/Makefile`, and `diy-part1.sh` copies them to
   `openwrt/package/kernel/extra-nics/` before `make defconfig`, otherwise those symbols
   would be unknown and silently dropped.
+- That local package file also flips two vendor switches back on. `generic/config-6.12`
+  ships `# CONFIG_NET_VENDOR_WANGXUN is not set` and
+  `# CONFIG_NET_VENDOR_MICROSOFT is not set`; without `CONFIG_NET_VENDOR_WANGXUN=y` /
+  `CONFIG_NET_VENDOR_MICROSOFT=y` kconfig silently drops `LIBWX`/`NGBE`/`TXGBE`/
+  `MICROSOFT_MANA` and the packages would be built empty (no error, just a warning).
+- `IDPF_SINGLEQ` and `NFP_DEBUG` are bools with no default in the kernel Kconfig, so they
+  must be given an explicit value in `kernel-modules/Makefile`; otherwise the
+  non-interactive `make syncconfig` aborts with `... (NEW)`.
 - `kmod-i2c-designware-platform` is pulled in by `txgbe` (it drives the SFP cage) and is not
   counted among the 100.
 

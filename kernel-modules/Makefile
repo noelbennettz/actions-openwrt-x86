@@ -84,7 +84,8 @@ define KernelPackage/idpf
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Intel Infrastructure Data Path Function support
   DEPENDS:=@PCI_SUPPORT +kmod-libeth
-  KCONFIG:=CONFIG_IDPF
+  KCONFIG:=CONFIG_IDPF \
+	CONFIG_IDPF_SINGLEQ=n
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/intel/idpf/idpf.ko
   AUTOLOAD:=$(call AutoLoad,35,idpf)
 endef
@@ -92,6 +93,9 @@ endef
 define KernelPackage/idpf/description
  Kernel module for Intel(R) Infrastructure Data Path Function devices
  (IPU / Mount Evans), used as the NIC of some cloud instances.
+ IDPF_SINGLEQ stays off: it is a NEW kernel symbol without a default, and the
+ non-interactive 'make syncconfig' aborts on it ("IDPF_SINGLEQ (NEW)") unless a
+ value is provided here.
 endef
 
 $(eval $(call KernelPackage,idpf))
@@ -105,13 +109,18 @@ $(eval $(call KernelPackage,idpf))
 define KernelPackage/libwx
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Wangxun Ethernet common library
-  KCONFIG:=CONFIG_LIBWX
+  KCONFIG:=CONFIG_NET_VENDOR_WANGXUN=y \
+	CONFIG_LIBWX
   HIDDEN:=1
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/wangxun/libwx/libwx.ko
 endef
 
 define KernelPackage/libwx/description
  Shared library used by the Wangxun ngbe and txgbe Ethernet drivers.
+ NET_VENDOR_WANGXUN is set to y here because target/linux/generic/config-6.12
+ ships "# CONFIG_NET_VENDOR_WANGXUN is not set", and without the vendor switch
+ kconfig silently refuses CONFIG_LIBWX/NGBE/TXGBE and the kmod packages end up
+ empty. Both drivers depend on this package, so the switch is always emitted.
 endef
 
 $(eval $(call KernelPackage,libwx))
@@ -159,13 +168,18 @@ define KernelPackage/nfp
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Netronome NFP4000/NFP6000 NIC support
   DEPENDS:=@PCI_SUPPORT
-  KCONFIG:=CONFIG_NFP
+  KCONFIG:=CONFIG_NFP \
+	CONFIG_NFP_DEBUG=n
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/netronome/nfp/nfp.ko
   AUTOLOAD:=$(call AutoLoad,35,nfp)
 endef
 
 define KernelPackage/nfp/description
  Kernel module for Netronome NFP4000/NFP6000 based SmartNICs.
+ NFP_DEBUG is a bool without a default in drivers/net/ethernet/netronome/
+ Kconfig, so it must be given a value here or 'make syncconfig' stops at
+ "NFP_DEBUG (NEW)". NFP_APP_FLOWER/NFP_APP_ABM_NIC/NFP_NET_IPSEC all have
+ "default y" and need no entry.
 endef
 
 $(eval $(call KernelPackage,nfp))
@@ -199,7 +213,8 @@ define KernelPackage/mana
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Microsoft Azure Network Adapter (MANA) support
   DEPENDS:=@TARGET_x86_64
-  KCONFIG:=CONFIG_MICROSOFT_MANA
+  KCONFIG:=CONFIG_NET_VENDOR_MICROSOFT=y \
+	CONFIG_MICROSOFT_MANA
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/microsoft/mana/mana.ko
   AUTOLOAD:=$(call AutoLoad,35,mana)
 endef
@@ -207,6 +222,9 @@ endef
 define KernelPackage/mana/description
  Kernel module for the Microsoft Azure Network Adapter (MANA), the
  accelerator NIC of newer Azure VM sizes.
+ NET_VENDOR_MICROSOFT is set to y here because target/linux/generic/config-6.12
+ ships "# CONFIG_NET_VENDOR_MICROSOFT is not set"; without the vendor switch
+ kconfig drops CONFIG_MICROSOFT_MANA and the package ends up empty.
 endef
 
 $(eval $(call KernelPackage,mana))

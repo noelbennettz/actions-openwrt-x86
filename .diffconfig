@@ -262,7 +262,7 @@ CONFIG_PACKAGE_intel-microcode=y
 CONFIG_PACKAGE_amd64-microcode=y
 
 # ==================== Wired NIC drivers: 100 packages ====================
-# 79 Ethernet controller drivers + 21 Ethernet PHY drivers, so that whatever
+# 80 network device drivers + 20 Ethernet PHY drivers, so that whatever
 # wired NIC a PC, mini PC, soft router or server shows up with is probed on
 # first boot. Counted per driver package, not per chip: r8169 alone covers the
 # whole RTL8111/8168/8125 family, igc covers I225/I226, tg3 covers the Broadcom
@@ -324,10 +324,11 @@ CONFIG_PACKAGE_kmod-sky2=y
 # ---- Mellanox ConnectX: 2 ----
 CONFIG_PACKAGE_kmod-mlx4-core=y
 CONFIG_PACKAGE_kmod-mlx5-core=y
-# ---- Server / 10G+ adapters: 8 ----
+# ---- Server / 10G+ adapters: 9 ----
 # qlcnic = QLogic 82xx, be2net = Emulex OneConnect, sfc* = Solarflare SFC9000/
 # SFC9100/SFC9200, hinic = Huawei Hi1822, lan743x = Microchip LAN7430/7431,
-# et131x = Agere ET1310
+# et131x = Agere ET1310, mhi-net = MHI netdev of PCIe/M.2 5G modules
+# (Snapdragon SDX55/SDX65 based, common in soft routers with a 5G modem)
 CONFIG_PACKAGE_kmod-qlcnic=y
 CONFIG_PACKAGE_kmod-be2net=y
 CONFIG_PACKAGE_kmod-sfc=y
@@ -336,6 +337,7 @@ CONFIG_PACKAGE_kmod-sfc-siena=y
 CONFIG_PACKAGE_kmod-hinic=y
 CONFIG_PACKAGE_kmod-lan743x=y
 CONFIG_PACKAGE_kmod-et131x=y
+CONFIG_PACKAGE_kmod-mhi-net=y
 # ---- Cisco / Pensando / Wangxun / Netronome: 5 (local packages, see above) ----
 # enic = Cisco VIC 12xx/13xx/14xx, ionic = AMD Pensando DSC,
 # ngbe = Wangxun 1G/2.5G, txgbe = Wangxun 10G, nfp = Netronome NFP4000/6000
@@ -385,7 +387,7 @@ CONFIG_PACKAGE_kmod-usb-net-smsc75xx=y
 CONFIG_PACKAGE_kmod-usb-net-smsc95xx=y
 CONFIG_PACKAGE_kmod-usb-net-sr9700=y
 
-# ---- Ethernet PHY drivers: 21 ----
+# ---- Ethernet PHY drivers: 20 ----
 # Required by many 2.5G/5G/10G onboard NICs and SFP modules; without the
 # matching PHY driver the MAC comes up but the link never establishes.
 # phy-realtek = RTL8201/8211/8221, phy-marvell(-10g) = 88E1xxx/88X3310,
@@ -405,7 +407,11 @@ CONFIG_PACKAGE_kmod-phy-vitesse=y
 CONFIG_PACKAGE_kmod-phy-amd=y
 CONFIG_PACKAGE_kmod-phy-aeonsemi-as21xxx=y
 CONFIG_PACKAGE_kmod-phy-airoha-en8811h=y
-CONFIG_PACKAGE_kmod-phy-at803x=y
+# phy-at803x is deliberately NOT listed: the kernel Kconfig has
+# "depends on REGULATOR" and target/linux/generic/config-6.12 ships
+# "# CONFIG_REGULATOR is not set", so CONFIG_AT803X_PHY can never be built here
+# and kmod-phy-at803x would only produce an empty package. The AR803x PHYs sit
+# on ARM/embedded boards, x86 boards use the Realtek/Motorcomm/Intel PHYs above.
 CONFIG_PACKAGE_kmod-phy-ax88796b=y
 CONFIG_PACKAGE_kmod-phy-bcm7xxx=y
 CONFIG_PACKAGE_kmod-phy-bcm84881=y
