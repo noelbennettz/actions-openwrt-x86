@@ -76,9 +76,18 @@ Notes:
   `# CONFIG_NET_VENDOR_MICROSOFT is not set`; without `CONFIG_NET_VENDOR_WANGXUN=y` /
   `CONFIG_NET_VENDOR_MICROSOFT=y` kconfig silently drops `LIBWX`/`NGBE`/`TXGBE`/
   `MICROSOFT_MANA` and the packages would be built empty (no error, just a warning).
-- `IDPF_SINGLEQ` and `NFP_DEBUG` are bools with no default in the kernel Kconfig, so they
-  must be given an explicit value in `kernel-modules/Makefile`; otherwise the
-  non-interactive `make syncconfig` aborts with `... (NEW)`.
+- Every prompt that a newly selected driver makes visible has to be given an explicit value
+  in `kernel-modules/Makefile` - also the ones that have a `default`. `include/kernel-build.mk`
+  exports `FAIL_ON_UNCONFIGURED=1` for the `$(LINUX_DIR)/.modules` target, and
+  `scripts/kconfig/conf --syncconfig` then exits 1 at the first symbol it would have to ask
+  about, printing `... (NEW)`; a `default y` does not save you, because `conf` looks for a
+  value in `.config` (`SYMBOL_DEF_USER`), not for a default. Current entries:
+  `CONFIG_IDPF_SINGLEQ=n` (idpf) and `CONFIG_NFP_APP_FLOWER=y`, `CONFIG_NFP_APP_ABM_NIC=y`,
+  `CONFIG_NFP_NET_IPSEC=y`, `CONFIG_NFP_DEBUG=n` (nfp).
+- Auditing this offline: merge `.config.set` the way `Kernel/Configure/Default` does, then
+  `scripts/kconfig/conf --listnewconfig Kconfig` on that *fresh* file prints every symbol that
+  would stop `syncconfig`. The list has to come back empty. Do not reuse a `.config` that an
+  earlier `syncconfig` already wrote, or the check silently passes.
 - `kmod-i2c-designware-platform` is pulled in by `txgbe` (it drives the SFP cage) and is not
   counted among the 100.
 

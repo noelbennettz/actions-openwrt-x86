@@ -169,6 +169,9 @@ define KernelPackage/nfp
   TITLE:=Netronome NFP4000/NFP6000 NIC support
   DEPENDS:=@PCI_SUPPORT
   KCONFIG:=CONFIG_NFP \
+	CONFIG_NFP_APP_FLOWER=y \
+	CONFIG_NFP_APP_ABM_NIC=y \
+	CONFIG_NFP_NET_IPSEC=y \
 	CONFIG_NFP_DEBUG=n
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/netronome/nfp/nfp.ko
   AUTOLOAD:=$(call AutoLoad,35,nfp)
@@ -176,10 +179,16 @@ endef
 
 define KernelPackage/nfp/description
  Kernel module for Netronome NFP4000/NFP6000 based SmartNICs.
- NFP_DEBUG is a bool without a default in drivers/net/ethernet/netronome/
- Kconfig, so it must be given a value here or 'make syncconfig' stops at
- "NFP_DEBUG (NEW)". NFP_APP_FLOWER/NFP_APP_ABM_NIC/NFP_NET_IPSEC all have
- "default y" and need no entry.
+ Every prompt in drivers/net/ethernet/netronome/Kconfig that OpenWrt's
+ merged kernel .config does not already answer has to be spelled out here,
+ including the ones with "default y": the .modules target exports
+ FAIL_ON_UNCONFIGURED=1 (include/kernel-build.mk), and 'make syncconfig'
+ then exits 1 at the first prompt it has to ask - "(NEW)" in the log - no
+ matter whether that symbol has a default. That is why NFP_APP_FLOWER and
+ NFP_APP_ABM_NIC are listed although they default to y, and NFP_DEBUG is
+ listed although it defaults to n. NFP_NET_IPSEC is invisible as long as
+ XFRM_OFFLOAD is not set, so it is only listed to keep the set complete
+ for the day the target config turns XFRM_OFFLOAD on.
 endef
 
 $(eval $(call KernelPackage,nfp))
