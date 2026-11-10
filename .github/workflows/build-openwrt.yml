@@ -153,18 +153,29 @@ jobs:
         # Keep the full log and surface the first failing package as an ::error::
         # annotation, so a failure can be diagnosed without downloading the log.
         report_failure() {
-          echo "=== first error context ==="
-          grep -n -m1 -B3 -A25 -E 'Error [0-9]|error:' "$1" || tail -n 100 "$1"
-          echo "::error::compile failed: $(grep -m1 -B2 -A6 -E 'Error [0-9]' "$1" | tr '\n' ' ' | cut -c1-900)"
+          local log="$1" line ctx
+          echo "=== error context ==="
+          # OpenWrt prints "ERROR: <package> failed to build." *after* the failing
+          # recipe, so show the ~80 lines that precede that summary instead of the
+          # generic "...toplevel.mk: world] Error 1" that grep -m1 would land on.
+          line=$(grep -n -m1 '^ERROR: .* failed to build\.' "$log" | cut -d: -f1)
+          if [ -n "$line" ]; then
+            ctx=$(sed -n "$(( line > 80 ? line - 80 : 1 )),$(( line + 2 ))p" "$log")
+          else
+            ctx=$(grep -n -m1 -B20 -A40 -E 'Error [0-9]|error:' "$log" || tail -n 120 "$log")
+          fi
+          printf '%s\n' "$ctx"
+          echo "::error::compile failed: $(printf '%s' "$ctx" | tr '\n' ' ' | cut -c1-3000)"
         }
         make -j$(nproc) 2>&1 | tee /tmp/build.log
         rc=${PIPESTATUS[0]}
         if [ "$rc" -ne 0 ]; then
           report_failure /tmp/build.log
           echo "=== retrying with V=s ==="
-          make -j$(nproc) V=s 2>&1 | tee -a /tmp/build.log
+          make -j$(nproc) V=s 2>&1 | tee /tmp/build-vs.log
           rc=${PIPESTATUS[0]}
-          [ "$rc" -ne 0 ] && { report_failure /tmp/build.log; exit "$rc"; }
+          cat /tmp/build-vs.log >> /tmp/build.log
+          [ "$rc" -ne 0 ] && { report_failure /tmp/build-vs.log; exit "$rc"; }
         fi
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
