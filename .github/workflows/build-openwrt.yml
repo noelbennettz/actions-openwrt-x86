@@ -166,27 +166,47 @@ jobs:
           fi
           printf '%s\n' "$ctx"
           # These messages name the culprit but carry neither "Error <n>" nor
-          # "error:", so the anchor above cannot see them.
-          hits=$(grep -m5 -B4 -A10 -E "ERROR: module '[^']+' is missing|No rule to make target|is not available in the kernel config" "$log" || true)
+          # "error:", so the anchor above cannot see them. They must be line
+          # anchored: with V=s every other kmod package's *recipe* is echoed too,
+          # and that text contains 'echo "ERROR: module ... is missing."'.
+          hits=$(grep -m5 -B2 -A6 -E "^ERROR: module '[^']*' is missing|^make\[[0-9]+\]: \*\*\* No rule to make target|^WARNING: kmod-[^ ]* is not available" "$log" || true)
           if [ -n "$hits" ]; then
             echo "=== kmod hits ==="
             printf '%s\n' "$hits"
           fi
           echo "::error::compile failed: $(printf '%s\n%s' "$hits" "$ctx" | tr '\n' ' ' | cut -c1-3000)"
         }
+        # Rebuild only the package OpenWrt named in "ERROR: <pkg> failed to build."
+        # with V=sc -j1: the toolchain and the kernel are already built, so this
+        # finishes in a minute and prints the failing recipe without -j interleaving.
+        focused_retry() {
+          local log="$1" pkg out rc=0
+          pkg=$(grep -m1 -o 'ERROR: package/[^ ]* failed to build' "$log" | sed 's/^ERROR: //; s/ failed to build$//' || true)
+          [ -n "$pkg" ] || return 1
+          out=/tmp/pkg.log
+          echo "=== focused: make $pkg/compile V=sc -j1 ==="
+          make "$pkg/compile" V=sc -j1 > "$out" 2>&1 || rc=$?
+          tail -n 60 "$out"
+          [ "$rc" -ne 0 ] && echo "::error::focused $pkg: $(tail -n 60 "$out" | tr '\n' ' ' | cut -c1-3000)"
+          return "$rc"
+        }
         make -j$(nproc) 2>&1 | tee /tmp/build.log
         rc=${PIPESTATUS[0]}
         if [ "$rc" -ne 0 ]; then
           report_failure /tmp/build.log
-          echo "=== retrying with -j1 V=s ==="
-          # -j1 for the retry: under -j the failing recipe is interleaved away from
-          # the "ERROR: ... failed to build." summary, which is exactly why the
-          # failure could not be diagnosed from the log. Everything up to the
-          # failing package is already built, so -j1 still gets there quickly.
-          make -j1 V=s 2>&1 | tee /tmp/build-vs.log
-          rc=${PIPESTATUS[0]}
-          cat /tmp/build-vs.log >> /tmp/build.log
-          [ "$rc" -ne 0 ] && { report_failure /tmp/build-vs.log; exit "$rc"; }
+          # Cheap first: rebuild only the failing package verbosely (-j1 so the
+          # recipe is not interleaved away). If that already fails we are done in
+          # about a minute; only a *transient* failure falls through to a full
+          # -j1 retry of the whole build.
+          if focused_retry /tmp/build.log; then
+            echo "=== focused build passed, retrying the whole build with -j1 V=s ==="
+            make -j1 V=s 2>&1 | tee /tmp/build-vs.log
+            rc=${PIPESTATUS[0]}
+            cat /tmp/build-vs.log >> /tmp/build.log
+            [ "$rc" -ne 0 ] && { report_failure /tmp/build-vs.log; exit "$rc"; }
+          else
+            exit "$rc"
+          fi
         fi
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
