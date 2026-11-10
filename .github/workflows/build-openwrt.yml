@@ -153,7 +153,7 @@ jobs:
         # Keep the full log and surface the first failing package as an ::error::
         # annotation, so a failure can be diagnosed without downloading the log.
         report_failure() {
-          local log="$1" line ctx
+          local log="$1" line ctx hits
           echo "=== error context ==="
           # OpenWrt prints "ERROR: <package> failed to build." *after* the failing
           # recipe, so show the ~80 lines that precede that summary instead of the
@@ -165,14 +165,25 @@ jobs:
             ctx=$(grep -n -m1 -B20 -A40 -E 'Error [0-9]|error:' "$log" || tail -n 120 "$log")
           fi
           printf '%s\n' "$ctx"
-          echo "::error::compile failed: $(printf '%s' "$ctx" | tr '\n' ' ' | cut -c1-3000)"
+          # These messages name the culprit but carry neither "Error <n>" nor
+          # "error:", so the anchor above cannot see them.
+          hits=$(grep -m5 -B4 -A10 -E "ERROR: module '[^']+' is missing|No rule to make target|is not available in the kernel config" "$log" || true)
+          if [ -n "$hits" ]; then
+            echo "=== kmod hits ==="
+            printf '%s\n' "$hits"
+          fi
+          echo "::error::compile failed: $(printf '%s\n%s' "$hits" "$ctx" | tr '\n' ' ' | cut -c1-3000)"
         }
         make -j$(nproc) 2>&1 | tee /tmp/build.log
         rc=${PIPESTATUS[0]}
         if [ "$rc" -ne 0 ]; then
           report_failure /tmp/build.log
-          echo "=== retrying with V=s ==="
-          make -j$(nproc) V=s 2>&1 | tee /tmp/build-vs.log
+          echo "=== retrying with -j1 V=s ==="
+          # -j1 for the retry: under -j the failing recipe is interleaved away from
+          # the "ERROR: ... failed to build." summary, which is exactly why the
+          # failure could not be diagnosed from the log. Everything up to the
+          # failing package is already built, so -j1 still gets there quickly.
+          make -j1 V=s 2>&1 | tee /tmp/build-vs.log
           rc=${PIPESTATUS[0]}
           cat /tmp/build-vs.log >> /tmp/build.log
           [ "$rc" -ne 0 ] && { report_failure /tmp/build-vs.log; exit "$rc"; }
