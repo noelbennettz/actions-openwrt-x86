@@ -261,27 +261,34 @@ CONFIG_LUCI_LANG_zh_Hant=y
 CONFIG_PACKAGE_intel-microcode=y
 CONFIG_PACKAGE_amd64-microcode=y
 
-# ==================== Wired NIC drivers: 100 packages ====================
-# 80 network device drivers + 20 Ethernet PHY drivers, so that whatever
+# ==================== Wired NIC drivers: 89 packages ====================
+# 69 network device drivers + 20 Ethernet PHY drivers, so that whatever
 # wired NIC a PC, mini PC, soft router or server shows up with is probed on
 # first boot. Counted per driver package, not per chip: r8169 alone covers the
 # whole RTL8111/8168/8125 family, igc covers I225/I226, tg3 covers the Broadcom
-# NetXtreme range and so on.
+# NetXtreme range and so on. Three more (virtual) NICs - vmxnet3, amazon-ena,
+# amd-xgbe - are listed in the KVM/cloud section below, so this file selects
+# 92 kmod-* driver packages in total.
 #
 # Nothing has to be added to the kernel config by hand: the kernel symbol of
 # every selected kmod-* package is written as =m into the kernel .config by
 # scripts/package-metadata.pl (include/kernel-defaults.mk -> .config.override).
 #
-# Exception: kmod-enic, kmod-ionic, kmod-idpf, kmod-ngbe, kmod-txgbe,
-# kmod-libwx, kmod-nfp, kmod-gve and kmod-mana are not packaged by the
-# official feed at all, so their definitions live in kernel-modules/ and
-# diy-part1.sh copies them to package/kernel/extra-nics before the build.
+# Deliberately NOT included: enic (Cisco VIC), ionic (AMD Pensando), idpf
+# (Intel IPU), libwx/ngbe/txgbe (Wangxun), nfp (Netronome), gve (Google GVE)
+# and mana (Microsoft Azure). The official feed does not package any of them,
+# so each one needed a hand-written kmod package, and selecting those makes
+# kernel Kconfig prompts visible that no shipped config answers - the
+# non-interactive 'make syncconfig' then aborts (FAIL_ON_UNCONFIGURED=1 in
+# include/kernel-build.mk) and the build dies in package/kernel/extra-nics.
+# They are server/cloud-only adapters, so they were dropped instead of kept at
+# the price of a fragile local kmod tree.
 
-# ---- Intel: 13 ----
+# ---- Intel: 12 ----
 # e100/e1000/e1000e = PRO/100, 8254x, 8257x/8256x
 # igb/igbvf = I210/I350, igc = I225/I226 2.5G, ice = E810 100G
 # ixgbe/ixgbevf = 82598/82599/X540/X550/X553, i40e/iavf = X710/XL710
-# idpf = Mount Evans IPU, dwmac-intel = Intel LGM/Keem Bay (stmmac based)
+# dwmac-intel = Intel LGM/Keem Bay (stmmac based)
 CONFIG_PACKAGE_kmod-e100=y
 CONFIG_PACKAGE_kmod-e1000=y
 CONFIG_PACKAGE_kmod-e1000e=y
@@ -293,7 +300,6 @@ CONFIG_PACKAGE_kmod-ixgbevf=y
 CONFIG_PACKAGE_kmod-i40e=y
 CONFIG_PACKAGE_kmod-iavf=y
 CONFIG_PACKAGE_kmod-ice=y
-CONFIG_PACKAGE_kmod-idpf=y
 CONFIG_PACKAGE_kmod-dwmac-intel=y
 # ---- Realtek: 3 ----
 CONFIG_PACKAGE_kmod-r8169=y
@@ -338,17 +344,6 @@ CONFIG_PACKAGE_kmod-hinic=y
 CONFIG_PACKAGE_kmod-lan743x=y
 CONFIG_PACKAGE_kmod-et131x=y
 CONFIG_PACKAGE_kmod-mhi-net=y
-# ---- Cisco / Pensando / Wangxun / Netronome: 5 (local packages, see above) ----
-# enic = Cisco VIC 12xx/13xx/14xx, ionic = AMD Pensando DSC,
-# ngbe = Wangxun 1G/2.5G, txgbe = Wangxun 10G, nfp = Netronome NFP4000/6000
-CONFIG_PACKAGE_kmod-enic=y
-CONFIG_PACKAGE_kmod-ionic=y
-CONFIG_PACKAGE_kmod-libwx=y
-CONFIG_PACKAGE_kmod-ngbe=y
-CONFIG_PACKAGE_kmod-txgbe=y
-CONFIG_PACKAGE_kmod-nfp=y
-# txgbe needs the DesignWare I2C platform driver (it drives the SFP cage)
-CONFIG_PACKAGE_kmod-i2c-designware-platform=y
 # ---- Legacy / industrial / common soft-router cards: 10 ----
 # (kmod-niu is deliberately not listed: niu is SPARC-only and cannot be built
 #  for x86, the package would end up empty)
@@ -439,9 +434,9 @@ CONFIG_PACKAGE_kmod-phy-rtl8261n=y
 # What still has to be packaged as a module:
 CONFIG_PACKAGE_kmod-vmxnet3=y      # VMware ESXi / vSphere / Workstation (e1000e also works)
 CONFIG_PACKAGE_kmod-amazon-ena=y   # AWS Nitro instances (c5/m5/r5/t3/...)
-CONFIG_PACKAGE_kmod-gve=y          # Google Compute Engine gVNIC
-CONFIG_PACKAGE_kmod-mana=y         # Azure ACCELNET / MANA (newer Azure NICs)
 CONFIG_PACKAGE_kmod-amd-xgbe=y     # AMD 10GbE on SoC (some EPYC/embedded boards)
+# gve (Google Compute Engine) and mana (Azure ACCELNET) are not packaged by the
+# official feed - see the note above the NIC driver list for why they are gone.
 
 # virtio_net also needs the tunnel/virtual interfaces selected further down
 # (kmod-tun, kmod-veth, kmod-dummy, kmod-macvlan, kmod-ipvlan).

@@ -16,9 +16,11 @@ A GitHub Actions firmware build repository based on the [P3TERX/Actions-OpenWrt]
 - CPU microcode: `intel-microcode` + `amd64-microcode`. The x86 kernel already has `CONFIG_MICROCODE` and
   `MICROCODE_LATE_LOADING` built in, so the blobs are loaded automatically at boot from
   `/lib/firmware/{intel-ucode,amd-ucode}`
-- NICs: 80 network device drivers plus 20 PHY drivers (= the 100 entries below),
-  including server adapters (Cisco VIC, AMD Pensando, Wangxun, Netronome) and the cloud NICs
-  (`gve` for GCE, `mana` for Azure, `ena` for AWS, `vmxnet3` for VMware)
+- NICs: 72 network device drivers plus 20 PHY drivers (= the 92 entries below), all of them
+  official OpenWrt `kmod-*` packages; virtual NICs (`ena` for AWS, `vmxnet3` for VMware) included.
+  Server-class adapters the official feed does not package (Cisco VIC, AMD Pensando, Wangxun,
+  Netronome, Intel IPU, Google GVE, Azure MANA) are deliberately left out - see the note under
+  the driver list.
 - VMs: KVM/QEMU (`virtio-net`), Hyper-V/Azure (`hv_netvsc`, `pci-hyperv`) and Xen
   (`xen-netfront`) are built into the x86/64 kernel; nothing to configure
 - Languages: Arabic, Chinese (Simplified + Traditional), English, French, Russian and Spanish
@@ -33,15 +35,16 @@ A GitHub Actions firmware build repository based on the [P3TERX/Actions-OpenWrt]
   `sysupgrade --test`, shows the SHA256 and offers "Force upgrade". Attended Sysupgrade
   (ASU / `owut`) is deliberately not included.
 
-## Network driver list (100 `CONFIG_PACKAGE_kmod-*` entries in `.diffconfig`)
+## Network driver list (92 `CONFIG_PACKAGE_kmod-*` driver packages in `.diffconfig`)
 
-79 Ethernet controller drivers plus 21 Ethernet PHY drivers. Counted per driver package, not
+72 Ethernet controller drivers (69 in the NIC section below plus `vmxnet3`, `amazon-ena` and
+`amd-xgbe` in the VM section) and 20 Ethernet PHY drivers. Counted per driver package, not
 per chip - `r8169` alone covers RTL8111/8168/8125, `igc` covers I225/I226, `tg3` covers the
 whole NetXtreme range.
 
 | Vendor | Drivers | Count |
 | --- | --- | --- |
-| Intel | `e100` `e1000` `e1000e` `igb` `igbvf` `igc` `ixgbe` `ixgbevf` `i40e` `iavf` `ice` `idpf` `dwmac-intel` | 13 |
+| Intel | `e100` `e1000` `e1000e` `igb` `igbvf` `igc` `ixgbe` `ixgbevf` `i40e` `iavf` `ice` `dwmac-intel` | 12 |
 | Realtek | `r8169` (RTL8111/8168/8125) `8139too` `8139cp` | 3 |
 | Atheros/Qualcomm Attansic | `atl1` `atl1c` `atl1e` `atl2` `alx` | 5 |
 | Aquantia / Marvell AQtion | `atlantic` (AQC107/108/111/112) | 1 |
@@ -50,10 +53,9 @@ whole NetXtreme range.
 | Marvell / SysKonnect | `skge` `sky2` | 2 |
 | Mellanox ConnectX | `mlx4-core` `mlx5-core` | 2 |
 | Server / 10G+ | `qlcnic` `be2net` `sfc` `sfc-falcon` `sfc-siena` `hinic` `lan743x` `et131x` `mhi-net` | 9 |
-| Cisco / AMD Pensando / Wangxun / Netronome | `enic` `ionic` `ngbe` `txgbe` `nfp` (+ helper `libwx`) | 5 |
 | Legacy / soft-router | `natsemi` `ne2k-pci` `pcnet32` `tulip` `3c59x` `via-rhine` `via-velocity` `sis190` `sis900` `r6040` | 10 |
 | USB Ethernet | `usb-net` `asix` `asix-ax88179` `aqc111` `cdc-ether` `cdc-eem` `cdc-ncm` `cdc-subset` `dm9601-ether` `kaweth` `lan78xx` `mcs7830` `pegasus` `rndis` `rtl8150` `rtl8152` `smsc75xx` `smsc95xx` `sr9700` | 19 |
-| Virtual / cloud | `vmxnet3` `amazon-ena` `gve` `mana` `amd-xgbe` | 5 |
+| Virtual / cloud | `vmxnet3` `amazon-ena` `amd-xgbe` | 3 |
 | PHY | `phy-realtek` `phy-marvell` `phy-marvell-10g` `phy-broadcom` `phy-aquantia` `phy-micrel` `phy-motorcomm` `phy-microchip` `phy-smsc` `phy-vitesse` `phy-amd` `phy-aeonsemi-as21xxx` `phy-airoha-en8811h` `phy-ax88796b` `phy-bcm7xxx` `phy-bcm84881` `phy-intel-xway` `phy-maxlinear` `phy-qca83xx` `phy-rtl8261n` | 20 |
 
 Notes:
@@ -66,30 +68,19 @@ Notes:
 - `kmod-phy-at803x` was dropped as well: `AT803X_PHY` has `depends on REGULATOR` and
   `target/linux/generic/config-6.12` ships `# CONFIG_REGULATOR is not set`, so the symbol can
   never be built here. The AR803x PHYs only appear on ARM/embedded boards.
-- Nine of the packages above (`enic`, `ionic`, `idpf`, `ngbe`, `txgbe`, `libwx`,
-  `nfp`, `gve`, `mana`) are **not** in the official feed. Their `kmod-*` definitions live in
-  `kernel-modules/Makefile`, and `diy-part1.sh` copies them to
-  `openwrt/package/kernel/extra-nics/` before `make defconfig`, otherwise those symbols
-  would be unknown and silently dropped.
-- That local package file also flips two vendor switches back on. `generic/config-6.12`
-  ships `# CONFIG_NET_VENDOR_WANGXUN is not set` and
-  `# CONFIG_NET_VENDOR_MICROSOFT is not set`; without `CONFIG_NET_VENDOR_WANGXUN=y` /
-  `CONFIG_NET_VENDOR_MICROSOFT=y` kconfig silently drops `LIBWX`/`NGBE`/`TXGBE`/
-  `MICROSOFT_MANA` and the packages would be built empty (no error, just a warning).
-- Every prompt that a newly selected driver makes visible has to be given an explicit value
-  in `kernel-modules/Makefile` - also the ones that have a `default`. `include/kernel-build.mk`
-  exports `FAIL_ON_UNCONFIGURED=1` for the `$(LINUX_DIR)/.modules` target, and
-  `scripts/kconfig/conf --syncconfig` then exits 1 at the first symbol it would have to ask
-  about, printing `... (NEW)`; a `default y` does not save you, because `conf` looks for a
-  value in `.config` (`SYMBOL_DEF_USER`), not for a default. Current entries:
-  `CONFIG_IDPF_SINGLEQ=n` (idpf) and `CONFIG_NFP_APP_FLOWER=y`, `CONFIG_NFP_APP_ABM_NIC=y`,
-  `CONFIG_NFP_NET_IPSEC=y`, `CONFIG_NFP_DEBUG=n` (nfp).
-- Auditing this offline: merge `.config.set` the way `Kernel/Configure/Default` does, then
-  `scripts/kconfig/conf --listnewconfig Kconfig` on that *fresh* file prints every symbol that
-  would stop `syncconfig`. The list has to come back empty. Do not reuse a `.config` that an
-  earlier `syncconfig` already wrote, or the check silently passes.
-- `kmod-i2c-designware-platform` is pulled in by `txgbe` (it drives the SFP cage) and is not
-  counted among the 100.
+- **Server/cloud adapters the official feed does not package are not shipped.** `enic`
+  (Cisco VIC), `ionic` (AMD Pensando), `idpf` (Intel IPU), `libwx`/`ngbe`/`txgbe` (Wangxun),
+  `nfp` (Netronome), `gve` (Google GVE) and `mana` (Azure ACCELNET) each needed a hand-written
+  `kmod-*` package in a local `package/kernel/extra-nics/`. Selecting them makes kernel Kconfig
+  prompts visible that none of the shipped config files answers, and `include/kernel-build.mk`
+  exports `FAIL_ON_UNCONFIGURED=1` for the `$(LINUX_DIR)/.modules` target, so
+  `scripts/kconfig/conf --syncconfig` exits 1 at the first such prompt (the `... (NEW)` line in
+  the log) - a `default y` in the driver's own Kconfig does not help, because `conf` looks for a
+  value in `.config` (`SYMBOL_DEF_USER`), not for a default. Chasing those symbols one by one
+  kept breaking the build, so the whole local kmod tree was removed (`7b9ea03`/`6cc40a3`
+  history has it if it is ever wanted back).
+- Every remaining driver comes from the official feed, so the kernel config step needs no
+  hand-written symbol at all.
 
 ## KVM guests and cloud VMs
 
@@ -103,11 +94,11 @@ No kernel config file has to be patched: OpenWrt writes the `KCONFIG` entry of e
 | KVM, QEMU, Proxmox, OpenStack, OCI, Alibaba, Tencent, Huawei Cloud | `virtio-net` | built in (`CONFIG_VIRTIO_NET=y`, `CONFIG_VIRTIO_PCI=y`) |
 | Hyper-V, Azure Gen2 VMs | `hv_netvsc` | built in (`CONFIG_HYPERV_NET=y`, `CONFIG_PCI_HYPERV=y`, `CONFIG_HYPERVISOR_GUEST=y`) |
 | Xen (older AWS EC2, some VPS) | `xen-netfront` | built in (`CONFIG_XEN_NETDEV_FRONTEND=y`) |
-| Azure ACCELNET / newer Azure sizes | `mana` | `kmod-mana` |
+| Azure ACCELNET / newer Azure sizes | `mana` | **not shipped** (no official `kmod-mana`, see the NIC notes) |
 | AWS Nitro (c5/m5/r5/t3 ...) | `ena` | `kmod-amazon-ena` |
-| Google Compute Engine | `gve` (gVNIC) | `kmod-gve` |
+| Google Compute Engine | `gve` (gVNIC) | **not shipped** (no official `kmod-gve`, see the NIC notes) |
 | VMware ESXi / vSphere | `vmxnet3` | `kmod-vmxnet3` (plus `e1000e`) |
-| Intel IPU / Mount Evans instances | `idpf` | `kmod-idpf` |
+| Intel IPU / Mount Evans instances | `idpf` | **not shipped** (no official `kmod-idpf`, see the NIC notes) |
 
 Also installed for guest use: `kmod-tun`, `kmod-veth`, `kmod-macvlan`, `kmod-ipvlan`,
 `kmod-ifb`, `kmod-dummy`. `net_failover` / `failover` are built in as well.
@@ -157,9 +148,8 @@ the passwall feed - a feed change, not a configuration change, so it is not done
 | `.github/workflows/build-openwrt.yml` | Main build workflow |
 | `.github/workflows/update-checker.yml` | Polls the official sources and triggers a build on changes |
 | `.diffconfig` | Target / package configuration (copied to `openwrt/.config`) |
-| `diy-part1.sh` | Hook before `feeds update`: adds the Passwall feeds, installs `kernel-modules/` into `package/kernel/extra-nics/` |
+| `diy-part1.sh` | Hook before `feeds update`: adds the Passwall feeds |
 | `diy-part2.sh` | Hook after `feeds install`: serial console fix, removes unusable protocol UI modules |
-| `kernel-modules/Makefile` | `kmod-*` definitions for NIC drivers the official feed does not package (`enic`, `ionic`, `idpf`, `libwx`, `ngbe`, `txgbe`, `nfp`, `gve`, `mana`) |
 | `files/` | Files copied into the image (default theme, sysctl) |
 
 ## Note on the serial console (boot stall fix)
