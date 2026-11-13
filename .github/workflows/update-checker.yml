@@ -18,49 +18,49 @@ on:
     # Note: February has no 30th, so no scheduled run happens that month.
     - cron: '0 0 30 * *'
 
+env:
+  # Must match REPO_BRANCH in build-openwrt.yml: the Go toolchain of 25.12 is
+  # required by the current passwall packages (see the README).
+  REPO_BRANCH: openwrt-25.12
+  # Feeds whose upstream commits are watched; order defines SHA_01 .. SHA_05.
+  REPOS: openwrt packages luci routing telephony
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      # Mattraks/delete-workflow-runs deletes runs with the default token
+      actions: write
+      # the release pruning below uses the PAT, but keep read access for the API
+      contents: read
 
     steps:
 
     - name: Get Commit Hash
       id: getHash
       run: |
-        git clone https://github.com/openwrt/openwrt --filter=blob:none --depth=1 -b openwrt-25.12
-        cd openwrt
-        echo "SHA_01=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-        cd
-
-        git clone https://github.com/openwrt/packages --filter=blob:none --depth=1 -b openwrt-25.12
-        cd packages
-        echo "SHA_02=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-        cd
-
-        git clone https://github.com/openwrt/luci --filter=blob:none --depth=1 -b openwrt-25.12
-        cd luci
-        echo "SHA_03=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-        cd
-
-        git clone https://github.com/openwrt/routing --filter=blob:none --depth=1 -b openwrt-25.12
-        cd routing
-        echo "SHA_04=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-        cd
-
-        git clone https://github.com/openwrt/telephony --filter=blob:none --depth=1 -b openwrt-25.12
-        cd telephony
-        echo "SHA_05=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-        cd
+        set -euo pipefail
+        i=0
+        for repo in $REPOS; do
+          i=$((i + 1))
+          git clone --filter=blob:none --depth=1 -b "$REPO_BRANCH" \
+            "https://github.com/openwrt/$repo" "$repo"
+          printf 'SHA_%02d=%s\n' "$i" "$(git -C "$repo" rev-parse --short HEAD)" \
+            >> "$GITHUB_OUTPUT"
+        done
 
     - name: Show Commit Head and Combination Heads
       id: combHeader
       run: |
-        echo "commitHash_All=\
-          ${{steps.getHash.outputs.SHA_01}}\
-          ${{steps.getHash.outputs.SHA_02}}\
-          ${{steps.getHash.outputs.SHA_03}}\
-          ${{steps.getHash.outputs.SHA_04}}\
-          ${{steps.getHash.outputs.SHA_05}}" >> $GITHUB_OUTPUT
+        # One line, so it is a valid action output *and* a valid cache key. A
+        # multi-line value would silently collapse the key and freeze the
+        # checker after the first cache save.
+        printf 'commitHash_All=%s-%s-%s-%s-%s\n' \
+          '${{ steps.getHash.outputs.SHA_01 }}' \
+          '${{ steps.getHash.outputs.SHA_02 }}' \
+          '${{ steps.getHash.outputs.SHA_03 }}' \
+          '${{ steps.getHash.outputs.SHA_04 }}' \
+          '${{ steps.getHash.outputs.SHA_05 }}' >> "$GITHUB_OUTPUT"
 
     - name: Compare Commit Hash
       id: cacheHash
@@ -68,20 +68,19 @@ jobs:
       with:
         path: .commitHash_All
         key: HEAD-${{ steps.combHeader.outputs.commitHash_All }}
-   
 
     - name: Save New Commit Hash
       if: steps.cacheHash.outputs.cache-hit != 'true'
       run: |
-        echo ${{ steps.combHeader.outputs.commitHash_All }} | tee .commitHash_All
-        
+        printf '%s\n' '${{ steps.combHeader.outputs.commitHash_All }}' > .commitHash_All
+
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@main
       with:
-          token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          retain_days: 1
-          keep_minimum_runs: 3
+        token: ${{ github.token }}
+        repository: ${{ github.repository }}
+        retain_days: 1
+        keep_minimum_runs: 3
 
     - name: Remove old Releases
       env:
@@ -120,7 +119,7 @@ jobs:
           | map(select(.dl < $kmin or .days > $md))
           | .[]
         ')
-        
+
     - name: Trigger build
       if: steps.cacheHash.outputs.cache-hit != 'true'
       uses: peter-evans/repository-dispatch@v4
