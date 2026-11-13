@@ -1,5 +1,5 @@
 #
-# Minimal official OpenWrt x86/64 (generic) configuration
+# OpenWrt x86/64 (generic) build configuration
 # The workflow copies this file to openwrt/.config, then 'make defconfig' fills in the rest
 #
 

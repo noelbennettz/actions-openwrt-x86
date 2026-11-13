@@ -1,6 +1,7 @@
 # Actions-OpenWrt (official source, x86)
 
-A GitHub Actions firmware build repository based on the [P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt) template.
+A GitHub Actions firmware build repository based on the
+[P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt) template.
 
 ## Current state
 
@@ -8,8 +9,10 @@ A GitHub Actions firmware build repository based on the [P3TERX/Actions-OpenWrt]
   The branch is not arbitrary: 25.12 is the first branch whose Go toolchain is 1.26, and the current
   passwall packages need it (sing-box >= 1.25.5, hysteria >= 1.26, geoview >= 1.25); 24.10 ships
   Go 1.23 and fails with `go.mod requires go >= 1.25.5 (running go 1.23.12; GOTOOLCHAIN=local)`.
-- Feeds: the official `feeds.conf.default` (packages / luci / routing / telephony), no third-party feeds
-- Config: `.diffconfig` (x86/64 generic), no custom patches and no private packages
+- Feeds: the official `feeds.conf.default` (packages / luci / routing / telephony) plus the two
+  Passwall feeds added by `diy-part1.sh` (Openwrt-Passwall organisation, see "Passwall")
+- Config: `.diffconfig` (x86/64 generic); no patch files and no private packages - the only
+  source change is the serial-console `sed` in `diy-part2.sh`
 - Package manager: **apk** (25.12 switched away from opkg); the LuCI "Software" page and
   passwall were checked for this, but note that any opkg-specific command in a plug-in will
   no longer apply
@@ -145,6 +148,7 @@ the passwall feed - a feed change, not a configuration change, so it is not done
 
 | File | Description |
 | --- | --- |
+| `.editorconfig` | Editor defaults (UTF-8, LF, final newline) |
 | `.github/workflows/build-openwrt.yml` | Main build workflow |
 | `.github/workflows/update-checker.yml` | Polls the official sources and triggers a build on changes |
 | `.diffconfig` | Target / package configuration (copied to `openwrt/.config`) |

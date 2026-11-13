@@ -85,7 +85,4 @@ if [ "$HIDE_UNUSABLE_PROTOS" = "1" ] && [ -d "$PPPO_PROTO_DIR" ]; then
   done
 fi
 
-# To change the default LAN IP, uncomment the line below:
-#sed -i 's/192.168.1.1/192.168.1.2/g' package/base-files/files/bin/config_generate
-
 exit 0
