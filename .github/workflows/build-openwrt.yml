@@ -385,11 +385,11 @@ jobs:
           gh cache delete "$id" -R "$REPO" || true
         done
 
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
-      with:
-        retain_days: 1
-        keep_minimum_runs: 5
+    - name: Delete every run but the three newest
+      if: success()
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: bash main-repo/scripts/prune-runs.sh 3
 
     - name: Remove old Releases
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()

@@ -130,3 +130,13 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
       run: gh api --method POST "repos/$GH_REPO/dispatches" -f event-type=openwrt_source_update
+
+    # Housekeeping: this workflow runs monthly; one page of history is enough.
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Delete every run but the three newest
+      if: always()
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: bash scripts/prune-runs.sh 3
