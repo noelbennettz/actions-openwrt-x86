@@ -1,0 +1,19 @@
+#!/bin/sh
+# Make Material the default LuCI theme.
+#
+# Every theme package ships a 30_luci-theme-* script that sets
+# luci.main.mediaurlbase, and /etc/init.d/boot sources everything in
+# /etc/uci-defaults in file-name order, so this 50_ script runs after all of them
+# and has the final word. That keeps the default deterministic instead of relying
+# on which theme package happens to sort last.
+#
+# boot() sources these files (no +x required) and runs "uci commit" once at the
+# end, so no explicit commit is needed here.
+[ "$PKG_UPGRADE" = 1 ] && exit 0
+
+# Only act when the Material theme is actually installed in this image.
+[ -d /www/luci-static/material ] || exit 0
+
+uci -q set luci.main.mediaurlbase=/luci-static/material
+
+exit 0

@@ -1,0 +1,132 @@
+#
+# Copyright (c) 2019-2024 smallprogram
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+# https://github.com/smallprogram/OpenWrtAction
+# File: .github/workflows/update-checker.yml
+# Description: Source code update checker
+#
+
+name: Update Checker
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Monthly: the 30th at 00:00 UTC (GitHub cron is always UTC).
+    # Note: February has no 30th, so no scheduled run happens that month.
+    - cron: '0 0 30 * *'
+
+env:
+  # Must match REPO_BRANCH in build-openwrt.yml: the Go toolchain of 25.12 is
+  # required by the current passwall packages (see the README).
+  REPO_BRANCH: openwrt-25.12
+  # Feeds whose upstream commits are watched; order defines SHA_01 .. SHA_05.
+  REPOS: openwrt packages luci routing telephony
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      # Mattraks/delete-workflow-runs deletes runs with the default token
+      actions: write
+      # release pruning (delete release + tag) and repository_dispatch both need
+      # contents: write; the built-in GITHUB_TOKEN is enough, no PAT required.
+      contents: write
+
+    steps:
+
+    - name: Get Commit Hash
+      id: getHash
+      run: |
+        set -euo pipefail
+        i=0
+        for repo in $REPOS; do
+          i=$((i + 1))
+          git clone --filter=blob:none --depth=1 -b "$REPO_BRANCH" \
+            "https://github.com/openwrt/$repo" "$repo"
+          printf 'SHA_%02d=%s\n' "$i" "$(git -C "$repo" rev-parse --short HEAD)" \
+            >> "$GITHUB_OUTPUT"
+        done
+
+    - name: Show Commit Head and Combination Heads
+      id: combHeader
+      run: |
+        # One line, so it is a valid action output *and* a valid cache key. A
+        # multi-line value would silently collapse the key and freeze the
+        # checker after the first cache save.
+        printf 'commitHash_All=%s-%s-%s-%s-%s\n' \
+          '${{ steps.getHash.outputs.SHA_01 }}' \
+          '${{ steps.getHash.outputs.SHA_02 }}' \
+          '${{ steps.getHash.outputs.SHA_03 }}' \
+          '${{ steps.getHash.outputs.SHA_04 }}' \
+          '${{ steps.getHash.outputs.SHA_05 }}' >> "$GITHUB_OUTPUT"
+
+    - name: Compare Commit Hash
+      id: cacheHash
+      uses: actions/cache@v5
+      with:
+        path: .commitHash_All
+        key: HEAD-${{ steps.combHeader.outputs.commitHash_All }}
+
+    - name: Save New Commit Hash
+      if: steps.cacheHash.outputs.cache-hit != 'true'
+      run: |
+        printf '%s\n' '${{ steps.combHeader.outputs.commitHash_All }}' > .commitHash_All
+
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        token: ${{ github.token }}
+        repository: ${{ github.repository }}
+        retain_days: 1
+        keep_minimum_runs: 3
+
+    - name: Remove old Releases
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        # Same policy as dev-drprasad/delete-older-releases: ignore drafts; keep the newest KEEP
+        # releases, then delete (including tags) releases older than MAX_DAYS days or with fewer
+        # than KEEP_MIN downloads, when both KEEP_MIN and MAX_DAYS are non-zero.
+        REPO="${{ github.repository }}"
+        KEEP=5
+        KEEP_MIN=2
+        MAX_DAYS=60
+        RAW=$(gh api --paginate "repos/${REPO}/releases")
+        DATA=$(echo "$RAW" | jq -s 'flatten(1)')
+        COUNT=$(echo "$DATA" | jq 'length')
+        if [ "${COUNT:-0}" -eq 0 ]; then
+          echo "No releases."
+          exit 0
+        fi
+        while IFS= read -r line; do
+          [ -z "$line" ] && continue
+          tag=$(echo "$line" | jq -r '.tag')
+          echo "Deleting release + tag: $tag"
+          gh release delete "$tag" --yes --cleanup-tag -R "$REPO" || true
+        done < <(echo "$DATA" | jq -c --argjson keep "$KEEP" --argjson kmin "$KEEP_MIN" --argjson md "$MAX_DAYS" '
+          [.[] | select(.draft == false and (.published_at | type == "string"))]
+          | sort_by(.published_at) | reverse
+          | map({
+              tag: .tag_name,
+              published_at: .published_at,
+              dl: ([.assets[]? | .download_count // 0] | add)
+            })
+          | .[$keep:]
+          | map(. + { days: (((now - (.published_at | fromdateiso8601)) / 86400) | floor) })
+          | map(select(.dl < $kmin or .days > $md))
+          | .[]
+        ')
+
+    - name: Trigger build
+      if: steps.cacheHash.outputs.cache-hit != 'true'
+      env:
+        # repository_dispatch sent with GITHUB_TOKEN is one of the two events
+        # (with workflow_dispatch) that still starts a new workflow run, so no
+        # personal access token is needed. The job needs contents: write above.
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: gh api --method POST "repos/$GH_REPO/dispatches" -f event-type=openwrt_source_update
