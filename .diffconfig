@@ -36,6 +36,26 @@ CONFIG_PACKAGE_luci=y
 #   odhcp6c         -> DHCPv6 client on WAN (also does prefix delegation)
 #   odhcpd-ipv6only -> RA (SLAAC) + DHCPv6 server on LAN
 # SLAAC on the WAN side is handled by the kernel (accept_ra) together with odhcp6c.
+#
+# Dual stack is complete on both sides: dnsmasq-full keeps serving DHCPv4/DNS for
+# IPv4 (its init script detects a running odhcpd and stays DHCPv4-only, so there
+# is never a second DHCPv6 server on the LAN), firewall4 covers both families
+# (its default rules allow the DHCPv6 client reply and the essential ICMPv6
+# types) and no NAT66 rule is installed, so global IPv6 addresses stay
+# end-to-end routable instead of being masqueraded.
+#
+# Downstream prefix delegation (LAN -> child routers): odhcpd-ipv6only is also a
+# DHCPv6-PD server, so a downstream router that asks with an IA_PD option gets a
+# sub-prefix out of the prefix assigned to the LAN interface, and odhcpd installs
+# the route for it towards that router's link-local address (no extra route or
+# firewall rule needed). This requires:
+#   * network.lan.ip6assign < 64 - bin/config_generate sets 60 for a static LAN,
+#     so the ISP delegation must be larger than a single /64 (/60, /56, ...);
+#     with only a /64 on the LAN there is nothing left to delegate.
+#   * dhcp.lan.dhcpv6='server'   - odhcpd.defaults sets this at first boot.
+#   * dhcp.lan.dhcpv6_pd='1'     - odhcpd's own default; dhcpv6_pd_min_len=62
+#     caps how large a block one requesting router may take (lower it to 56/60,
+#     together with a shorter ip6assign, when downstream routers need more).
 CONFIG_PACKAGE_luci-proto-ipv6=y
 CONFIG_PACKAGE_odhcp6c=y
 CONFIG_PACKAGE_odhcpd-ipv6only=y

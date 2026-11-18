@@ -237,6 +237,47 @@ IPv6 coverage: the kernel ships IPv6 built in, `odhcp6c` is the DHCPv6 client,
 `accept_ra=2` so that WAN SLAAC works out of the box; comment those lines out if
 you want strict RA filtering.
 
+Dual stack is complete out of the box: IPv4 (DHCPv4 and DNS) is served by
+`dnsmasq-full`, IPv6 by `odhcpd-ipv6only`, and dnsmasq's init script detects the
+running odhcpd and stays DHCPv4-only, so there are never two DHCPv6 servers on
+the LAN. `firewall4` covers both families (the stock rules allow the DHCPv6
+client reply and the essential ICMPv6 types) and no NAT66 rule is installed, so
+globally addressed IPv6 stays end-to-end routable. The default `wan` is `dhcp`,
+for which `bin/config_generate` creates `wan6` (`proto dhcpv6`) automatically;
+with no `reqprefix` set, odhcp6c sends IA_PD without a length hint and accepts
+whatever the ISP delegates.
+
+### Downstream prefix delegation (LAN → child routers)
+
+`odhcpd-ipv6only` is also a DHCPv6-PD server (`dhcpv6_pd` defaults to 1), so a
+downstream router that asks with IA_PD receives a sub-prefix of the prefix
+assigned to the LAN interface, and odhcpd installs the route back to that
+router's link-local address — no extra route or firewall rule is needed. It
+works when all of the following hold:
+
+- the ISP delegates more than a single `/64` (`/60`, `/56`, …);
+- `network.lan.ip6assign` is shorter than 64 — `bin/config_generate` sets `60`
+  for a static LAN, which leaves room for delegation;
+- `dhcp.lan.ra` and `dhcp.lan.dhcpv6` are `server` (`odhcpd.defaults` sets both at
+  first boot) and `dhcp.lan.dhcpv6_pd` is `1` (odhcpd's default).
+
+`dhcpv6_pd_min_len` (default 62) caps how large a block one requesting router may
+take: with the default `/60` LAN a child router gets at most a `/62` (the `/60`
+pool yields about three of them). Lower the value together with a shorter
+`ip6assign` when downstream routers need larger blocks:
+
+```
+uci set network.lan.ip6assign='56'
+uci set dhcp.lan.dhcpv6_pd_min_len='60'
+uci commit; /etc/init.d/network reload; /etc/init.d/odhcpd restart
+```
+
+With only a `/64` from the ISP there is nothing left to delegate; use the relay
+mode (`relayd` is installed) or ask the ISP for a larger prefix. To check a
+running box, use `ifstatus wan6 | jsonfilter -e '@["ipv6-prefix"][*]'`,
+`ubus call dhcp ipv6ra` and `ubus call dhcp ipv6leases`; on the child router,
+`ifstatus wan6` shows the delegated prefix and its routes.
+
 ## iptables / ip6tables support
 
 `firewall4` (nftables) stays the system firewall, but the complete **legacy**
