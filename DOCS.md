@@ -25,9 +25,9 @@ the short [README](README.md) lives here.
 | --- | --- |
 | Source | official `openwrt/openwrt`, branch `openwrt-25.12`, kernel 6.12 |
 | Target | `x86/64` device `generic`, 16 MB kernel partition, 1024 MB rootfs |
-| Package manager | **apk** (25.12 moved away from opkg); LuCI "Software" and Passwall were checked against it, but an opkg-only command in some plug-in no longer applies |
-| Config | `.diffconfig` only — no patch files and no private packages; the only edits to upstream sources are the two in `diy-part2.sh` (serial-console `sed`, two removed LuCI protocol modules) |
-| Feeds | official `feeds.conf.default` (packages / luci / routing / telephony) plus the two Passwall feeds added by `diy-part1.sh` |
+| Package manager | **apk**: 25.12 ships `package/system/apk`; LuCI's "Software" page and Passwall work with it, a plug-in script that calls `opkg` does not |
+| Config | `.diffconfig` only — no patch files and no private packages. The only edits to upstream sources are in `diy-part2.sh`: three `sed` expressions on `target/linux/x86/image/Makefile` for the serial console, and the deletion of `pptp.js` and `pppoa.js` from `feeds/luci/protocols/luci-proto-ppp/htdocs/luci-static/resources/protocol/` |
+| Feeds | official `feeds.conf.default` (packages / luci / routing / telephony / video) with the two Passwall feeds prepended by `diy-part1.sh` |
 | LuCI | the official `luci` collection (status / system / network / firewall / package manager), HTTPS via `luci-ssl` (self-signed), UPnP IGD via `luci-app-upnp` + `miniupnpd-nftables` |
 | Themes | `luci-theme-material` (default), `luci-theme-openwrt-2020`, `luci-theme-bootstrap` |
 | Languages | ar, en, es, fr, ru, zh-cn, zh-tw |
@@ -35,9 +35,10 @@ the short [README](README.md) lives here.
 | Firewall | `firewall4` (nftables) plus the full legacy xtables stack for plug-ins |
 | Extras | serial console disabled, `accept_ra=2` for WAN SLAAC, Material as the default theme regardless of package order |
 
-The branch is `openwrt-25.12` and not 24.10 because of Go: 25.12 is the first
-branch whose toolchain is Go 1.26, which the current Passwall packages need
-(sing-box >= 1.25.5, hysteria >= 1.26, geoview >= 1.25). On 24.10 the build stops
+The branch is `openwrt-25.12` and not 24.10 because of Go. The `go.mod` of the Go
+programs in the Passwall feed declares `go 1.25.5` (sing-box 1.14.4) and `go
+1.25.0` (geoview), and `lang/golang/golang-values.mk` on `openwrt-25.12` sets
+`GO_DEFAULT_VERSION:=1.26`. The 24.10 feed ships Go 1.23.12, where the build stops
 with `go.mod requires go >= 1.25.5 (running go 1.23.12; GOTOOLCHAIN=local)`.
 
 The image boots on the VGA console only: `diy-part2.sh` strips the serial console
@@ -45,21 +46,23 @@ from `target/linux/x86/image/Makefile`, so a phantom UART (Intel AMT SOL, IPMI,
 SuperIO) cannot stall the boot. `ENABLE_SERIAL_CONSOLE=1` at the top of
 `diy-part2.sh` restores the upstream behaviour.
 
-LuCI can flash an image by itself: `luci-mod-system` uploads it to
-`/tmp/firmware.bin`, validates it with `sysupgrade --test`, prints the SHA256 and
-offers "Force upgrade". Attended Sysupgrade (`owut` / ASU) is deliberately not
-included.
+LuCI can flash an image by itself: the "Backup / Flash Firmware" page of
+`luci-mod-system` uploads it to `/tmp/firmware.bin`, validates it with
+`/sbin/sysupgrade --test`, prints the SHA256 and offers "Force upgrade"
+(`modules/luci-mod-system/htdocs/luci-static/resources/view/system/flash.js`).
+Attended Sysupgrade (`owut` / ASU) is not included.
 
-Microcode: the x86 kernel already has `CONFIG_MICROCODE` and
-`MICROCODE_LATE_LOADING` built in, so `intel-microcode` and `amd64-microcode`
-are loaded from `/lib/firmware/{intel-ucode,amd-ucode}` at boot without a kernel
-change.
+Microcode: `target/linux/x86/64/config-6.12` ships
+`CONFIG_MICROCODE_LATE_LOADING=y`, so `intel-microcode` and `amd64-microcode` are
+loaded from `/lib/firmware/{intel-ucode,amd-ucode}` at boot without a kernel
+config change.
 
 ## Network drivers (92 packages)
 
-72 Ethernet controller drivers (69 in the table plus `vmxnet3`, `amazon-ena`
-and `amd-xgbe` in the VM section) and 20 Ethernet PHY drivers. Counted per
-driver package, not per chip.
+89 wired driver packages (69 Ethernet controllers plus 20 Ethernet PHYs) and the
+three virtual NICs `vmxnet3`, `amazon-ena` and `amd-xgbe` in the same table: 92
+`kmod-*` driver packages in `.diffconfig`, counted per driver package, not per
+chip.
 
 | Vendor | Drivers | Count |
 | --- | --- | --- |
@@ -77,35 +80,38 @@ driver package, not per chip.
 | Virtual / cloud | `vmxnet3` `amazon-ena` `amd-xgbe` | 3 |
 | PHY | `phy-realtek` `phy-marvell` `phy-marvell-10g` `phy-broadcom` `phy-aquantia` `phy-micrel` `phy-motorcomm` `phy-microchip` `phy-smsc` `phy-vitesse` `phy-amd` `phy-aeonsemi-as21xxx` `phy-airoha-en8811h` `phy-ax88796b` `phy-bcm7xxx` `phy-bcm84881` `phy-intel-xway` `phy-maxlinear` `phy-qca83xx` `phy-rtl8261n` | 20 |
 
-Every row above is a `CONFIG_PACKAGE_kmod-<name>=y` line in `.diffconfig`, taken
-from the official `packages` feed.
+Every name in the table appears in `.diffconfig` as
+`CONFIG_PACKAGE_kmod-<name>=y`, with the USB row spelled `kmod-usb-net-<name>`.
+The package definitions come from the OpenWrt tree, not from a feed:
+`package/kernel/linux/modules/netdevices.mk` and `.../usb.mk`, plus
+`target/linux/x86/modules.mk` for `kmod-dwmac-intel` and `kmod-amd-xgbe`.
 
 Notes:
 
-- `virtio-net`, `hv_netvsc`, `xen-netfront` and `veth` are built into the
-  x86/64 kernel, so no package is needed for them (see the VM section below).
+- `virtio-net`, `hv_netvsc` and `xen-netfront` are built into the x86/64 kernel
+  (`target/linux/x86/64/config-6.12`: `CONFIG_VIRTIO_NET=y`, `CONFIG_HYPERV_NET=y`,
+  `CONFIG_XEN_NETDEV_FRONTEND=y`), so no package is needed for them. `veth` is a
+  module and comes from `kmod-veth`.
 - The official tree has no `r8125` / `r8168`; 2.5G Realtek NICs are handled by
   `r8169`.
-- `kmod-niu` was dropped: `niu` is SPARC-only and cannot be built for x86, the
-  package would have ended up empty.
-- `kmod-phy-at803x` was dropped as well: `AT803X_PHY` has `depends on REGULATOR`
-  and `target/linux/generic/config-6.12` ships `# CONFIG_REGULATOR is not set`,
-  so the symbol can never be built here. AR803x PHYs only appear on
-  ARM/embedded boards.
+- `kmod-niu` is not in the list: `niu` is SPARC-only and cannot be built for x86,
+  the package would be empty.
+- `kmod-phy-at803x` is not in the list either: `AT803X_PHY` has `depends on
+  REGULATOR` and `target/linux/generic/config-6.12` ships `# CONFIG_REGULATOR is
+  not set` (and `# CONFIG_AT803X_PHY is not set`), so the symbol can never be
+  built here. AR803x PHYs only appear on ARM/embedded boards.
 - **Server/cloud adapters the official feed does not package are not shipped.**
   `enic` (Cisco VIC), `ionic` (AMD Pensando), `idpf` (Intel IPU),
   `libwx`/`ngbe`/`txgbe` (Wangxun), `nfp` (Netronome), `gve` (Google GVE) and
-  `mana` (Azure ACCELNET) each needed a hand-written `kmod-*` package in a local
-  `package/kernel/extra-nics/`. Selecting them makes kernel Kconfig prompts
-  visible that none of the shipped config files answers, and
+  `mana` (Azure ACCELNET) have no `kmod-*` package. Adding them through a local
+  `package/kernel/extra-nics/` tree does not work here: their drivers make kernel
+  Kconfig prompts visible that none of the shipped config files answers, and
   `include/kernel-build.mk` exports `FAIL_ON_UNCONFIGURED=1` for the
   `$(LINUX_DIR)/.modules` target, so `scripts/kconfig/conf --syncconfig` exits 1
   at the first such prompt (the `... (NEW)` line in the log). A `default y` in
   the driver's own Kconfig does not help: `conf` looks for a value in `.config`
-  (`SYMBOL_DEF_USER`), not for a default. Chasing those symbols one at a time
-  kept breaking the build, so the whole local kmod tree was removed — history
-  has it (`7b9ea03`, `6cc40a3`) if it is ever wanted back.
-- Every remaining driver comes from the official feed, so the kernel config step
+  (`SYMBOL_DEF_USER`), not for a default.
+- Every driver in the list ships with the OpenWrt tree, so the kernel config step
   needs no hand-written symbol at all.
 
 ## Virtual machines and cloud guests
@@ -120,11 +126,11 @@ every selected `kmod-*` package into the kernel `.config` as `=m` by itself
 | KVM, QEMU, Proxmox, OpenStack, OCI, Alibaba, Tencent, Huawei Cloud | `virtio-net` | built in (`CONFIG_VIRTIO_NET=y`, `CONFIG_VIRTIO_PCI=y`) |
 | Hyper-V, Azure Gen2 VMs | `hv_netvsc` | built in (`CONFIG_HYPERV_NET=y`, `CONFIG_PCI_HYPERV=y`, `CONFIG_HYPERVISOR_GUEST=y`) |
 | Xen (older AWS EC2, some VPS) | `xen-netfront` | built in (`CONFIG_XEN_NETDEV_FRONTEND=y`) |
-| Azure ACCELNET / newer Azure sizes | `mana` | **not shipped** (no official `kmod-mana`, see the NIC notes) |
+| Azure ACCELNET / newer Azure sizes | `mana` | **not shipped** (no `kmod-mana`, see the NIC notes) |
 | AWS Nitro (c5/m5/r5/t3 ...) | `ena` | `kmod-amazon-ena` |
-| Google Compute Engine | `gve` (gVNIC) | **not shipped** (no official `kmod-gve`, see the NIC notes) |
+| Google Compute Engine | `gve` (gVNIC) | **not shipped** (no `kmod-gve`, see the NIC notes) |
 | VMware ESXi / vSphere | `vmxnet3` | `kmod-vmxnet3` (plus `e1000e`) |
-| Intel IPU / Mount Evans instances | `idpf` | **not shipped** (no official `kmod-idpf`, see the NIC notes) |
+| Intel IPU / Mount Evans instances | `idpf` | **not shipped** (no `kmod-idpf`, see the NIC notes) |
 
 Also installed for guest use: `kmod-tun`, `kmod-veth`, `kmod-macvlan`,
 `kmod-ipvlan`, `kmod-ifb`, `kmod-dummy`. `net_failover` / `failover` are built
@@ -154,10 +160,18 @@ installed, so nothing whose back end is missing is offered):
 | DHCPv6 client | `dhcpv6` | `odhcp6c` (address + prefix delegation) |
 | Relay bridge | `relay` | `relayd` + `luci-proto-relay` |
 
-`diy-part2.sh` additionally removes the LuCI modules for **PPTP** and **PPPoA**
-(`HIDE_UNUSABLE_PROTOS`), because `ppp.sh` registers those handlers although no
-usable plug-in exists in 24.10/25.12 — without this they would show up in the
-dialog and then fail.
+`diy-part2.sh` also removes the LuCI modules for **PPTP** and **PPPoA**
+(`HIDE_UNUSABLE_PROTOS=1` deletes `pptp.js` and `pppoa.js` from the
+`luci-proto-ppp` htdocs directory): `/lib/netifd/proto/ppp.sh` from the `ppp`
+package registers both handlers, but the plug-ins behind them —
+`ppp-mod-pptp` and `ppp-mod-pppoa` in
+`package/network/services/ppp/Makefile` — are not selected, so both entries would
+appear in the dialog and then fail.
+
+`ppp` and `ppp-mod-pppoe` themselves are not named in `.diffconfig`: they arrive
+through the `router` default package set (`DEVICE_TYPE?=router` in
+`include/target.mk`, which also brings `dnsmasq`, `firewall4`, `nftables`,
+`odhcp6c` and `odhcpd-ipv6only`; `dnsmasq-full` replaces `dnsmasq`).
 
 Bonding is a **device**, not an interface protocol: with `kmod-bonding`
 installed, LuCI offers "Bonding/Aggregation device" in "Devices → Add device
@@ -168,10 +182,12 @@ has no upstream LuCI page.
 
 IPv6 coverage: the kernel ships IPv6 built in, `odhcp6c` is the DHCPv6 client,
 `odhcpd-ipv6only` provides RA (SLAAC) plus the DHCPv6 server for the LAN, and
-`luci-proto-ipv6` provides the UI. Because OpenWrt's `/etc/init.d/sysctl` forces
-`accept_ra=0` on all interfaces, `files/etc/sysctl.d/20-ipv6-accept-ra.conf` sets
-`accept_ra=2` so that WAN SLAAC works out of the box; comment those lines out if
-you want strict RA filtering.
+`luci-proto-ipv6` provides the UI. Because OpenWrt's `/etc/init.d/sysctl` sets
+`net.ipv6.conf.default.accept_ra` and every existing interface to `0`,
+`files/etc/sysctl.d/20-ipv6-accept-ra.conf` sets
+`net.ipv6.conf.all.accept_ra=2` and `net.ipv6.conf.default.accept_ra=2` so that
+WAN SLAAC works out of the box; comment those lines out if you want strict RA
+filtering.
 
 Dual stack is complete out of the box: IPv4 (DHCPv4 and DNS) is served by
 `dnsmasq-full`, IPv6 by `odhcpd-ipv6only`, and dnsmasq's init script detects the
@@ -195,12 +211,14 @@ works when all of the following hold:
 - `network.lan.ip6assign` is shorter than 64 — `bin/config_generate` sets `60`
   for a static LAN, which leaves room for delegation;
 - `dhcp.lan.ra` and `dhcp.lan.dhcpv6` are `server` (`odhcpd.defaults` sets both at
-  first boot) and `dhcp.lan.dhcpv6_pd` is `1` (odhcpd's default).
+  first boot when `network.lan.proto` is `static`) and `dhcp.lan.dhcpv6_pd` is `1`
+  (`iface->dhcpv6_pd = true` in odhcpd's `src/config.c`).
 
-`dhcpv6_pd_min_len` (default 62) caps how large a block one requesting router may
-take: with the default `/60` LAN a child router gets at most a `/62` (the `/60`
-pool yields about three of them). Lower the value together with a shorter
-`ip6assign` when downstream routers need larger blocks:
+`dhcpv6_pd_min_len` (default 62, `PD_MIN_LEN_DEFAULT` in odhcpd's
+`src/config.c`) caps how large a block one requesting router may take: with the
+default `/60` LAN a child router gets at most a `/62` (the `/60` pool yields about
+three of them). Lower the value together with a shorter `ip6assign` when
+downstream routers need larger blocks:
 
 ```
 uci set network.lan.ip6assign='56'
@@ -240,13 +258,14 @@ through the classic tools:
 - `CONFIG_IPTABLES_CONNLABEL=y` is required for
   `iptables-mod-conntrack-label`.
 
-Only `iptables-mod-lua` is left out (it would pull a full Lua runtime); add it
-if a plug-in really needs the Lua PacketScript match.
+`iptables-mod-lua` is not installed: it pulls a full Lua runtime. Add
+`CONFIG_PACKAGE_iptables-mod-lua=y` when a plug-in needs the Lua PacketScript
+match.
 
 ## Passwall, sing-box and Hysteria 2
 
 `diy-part1.sh` prepends two feeds from the **Openwrt-Passwall organisation** (the
-project moved away from the `xiaorouji` account, the old URLs return 404):
+old `xiaorouji` URLs return 404):
 
 ```
 src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
@@ -259,9 +278,9 @@ the official feeds (`xray-core`, `sing-box`, `microsocks`, `smartdns`).
 Only the **sing-box** and **Hysteria 2** cores are built; every other
 `INCLUDE_*` option is switched off (Xray, Xray-Plugin, V2ray-Plugin,
 Shadowsocks-Rust which would pull the Rust toolchain, ShadowsocksR, Simple-Obfs,
-SmartDNS, Haproxy, NaiveProxy, Shadow-TLS). The exact core versions are whatever
-the Passwall feed carries at build time — sing-box 1.14.4 and Hysteria 2 2.13.0
-for the images built while this text was written.
+SmartDNS, Haproxy, NaiveProxy, Shadow-TLS). The versions are whatever the feed's
+`main` branch carries at build time; each release records them in
+`feeds.buildinfo` and `SOURCES.txt`.
 
 Two extras are included on purpose:
 
@@ -292,7 +311,7 @@ are built receive the six translation packages and no unused app is pulled in:
 
 | Component | Languages |
 | --- | --- |
-| `luci-base` (includes the `luci-mod-system` / `-network` / `-status` strings — in 25.12 they live in `luci-base.po`) | ar, es, fr, ru, zh-cn, zh-tw |
+| `luci-base` (covers the `luci-mod-system` / `-network` / `-status` strings: those packages have no `po/` directory of their own, their strings are in `luci-base`) | ar, es, fr, ru, zh-cn, zh-tw |
 | `luci-app-firewall` | ar, es, fr, ru, zh-cn, zh-tw |
 | `luci-app-upnp` | ar, es, fr, ru, zh-cn, zh-tw |
 | `luci-app-package-manager` | ar, es, fr, ru, zh-cn, zh-tw |
@@ -303,10 +322,10 @@ switches the themes to right-to-left on its own. Adding another language later
 is one `CONFIG_LUCI_LANG_<lang>` line (the known languages are listed in
 `feeds/luci/luci.mk`) plus a rebuild.
 
-**Passwall caveat:** the upstream `openwrt-passwall` feed only carries
-`po/zh_Hans`, so its pages stay English for ar/es/fr/ru/zh-tw. Translating it
-means committing a `.po` file into the Passwall feed — a feed change, not a
-configuration change, so it is not done here.
+**Passwall caveat:** `luci-app-passwall/po/` in the upstream feed holds only
+`zh-cn` (with `zh_Hans` as a symlink to it), so its pages stay English for
+ar/es/fr/ru/zh-tw. Translating it means committing a `.po` file into the Passwall
+feed — a feed change, not a configuration change, so it is not done here.
 
 ## LuCI themes
 
@@ -339,10 +358,15 @@ cloned into `package/` from `diy-part1.sh` (for example
 
 A successful build publishes the firmware directory as an Actions artefact named
 `OpenWrt_firmware_generic_<YYYYMMDDHHMM>` and the same files as a GitHub Release
-tagged `OpenWrt_openwrt-25.12_<YYYYMMDDHHMM>`. The release assets are the exact
-contents of `openwrt/bin/targets/x86/64/` (the `packages/` subdirectory is
-removed) plus `SOURCES.txt`; the release notes carry the last 24 hours of
-upstream git log.
+tagged `OpenWrt_openwrt-25.12_<YYYYMMDDHHMM>`. Both names are built in
+`build-openwrt.yml` from `DEVICE_NAME` (the profile part of
+`CONFIG_TARGET_x86_64_DEVICE_generic`) and `FILE_DATE` (`date +%Y%m%d%H%M` with
+`TZ: Asia/Shanghai`, so the stamp is Shanghai local time). The release assets are
+the exact contents of `openwrt/bin/targets/x86/64/` (the `packages/` subdirectory
+is removed) plus `SOURCES.txt`; the release notes carry the
+`git log --since=24.hour` of `openwrt` and of the feeds `packages`, `luci`,
+`routing` and `telephony`, followed by a `## Source` section pointing at the
+branch and the `.diffconfig` commit.
 
 | File | Use |
 | --- | --- |
@@ -350,9 +374,9 @@ upstream git log.
 | `openwrt-x86-64-generic-squashfs-combined.img.gz` | Legacy BIOS, squashfs + writable overlay |
 | `openwrt-x86-64-generic-ext4-combined-efi.img.gz` / `openwrt-x86-64-generic-ext4-combined.img.gz` | same, ext4 rootfs |
 | `openwrt-x86-64-generic-{squashfs,ext4}-rootfs.img.gz` | root filesystem on its own |
-| `openwrt-x86-64-generic-rootfs.tar.gz`, `openwrt-x86-64-generic-targz-rootfs.tar.gz` | container / manual extraction |
+| `openwrt-x86-64-generic-rootfs.tar.gz`, `openwrt-x86-64-generic-targz-rootfs.tar.gz` | container / manual extraction (`CONFIG_TARGET_ROOTFS_TARGZ`) |
 | `openwrt-x86-64-generic-kernel.bin` | kernel and initramfs bundle |
-| `…-manifest`, `sha256sums`, `profiles.json`, `config.buildinfo`, `feeds.buildinfo`, `version.buildinfo` | package list, checksums, build metadata |
+| `openwrt-x86-64-generic.manifest`, `sha256sums`, `profiles.json`, `config.buildinfo`, `feeds.buildinfo`, `version.buildinfo` | package list, checksums, build metadata |
 | `SOURCES.txt` | exact commit of OpenWrt and of every feed (see [SOURCE.md](SOURCE.md)) |
 
 Flash it with `dd`, balenaEtcher or Rufus, or from an existing OpenWrt with
@@ -373,26 +397,30 @@ Two triggers, both on the built-in token:
 
 - **`Build OpenWrt`** (`.github/workflows/build-openwrt.yml`, `workflow_dispatch`
   plus `repository_dispatch`) builds on demand; a manual run also accepts an `ssh`
-  input (`true` opens a tmate session via `P3TERX/ssh2actions`). Pushing to `main`
-  starts nothing.
-- **`Update Checker`** (`.github/workflows/update-checker.yml`) runs monthly, on
-  the 30th at 00:00 UTC (GitHub cron is UTC; February has no 30th, so that month
-  is skipped), clones `openwrt/{openwrt,packages,luci,routing,telephony}` at
-  `openwrt-25.12`, and compares the five HEAD hashes with the previous run through
-  a cache marker. If anything moved it dispatches `openwrt_source_update`; if not,
-  the run ends after the check.
+  input (`required: false`, `default: 'false'`; `true` opens a tmate session via
+  `P3TERX/ssh2actions@v1.0.0`). Pushing to `main` starts nothing.
+- **`Update Checker`** (`.github/workflows/update-checker.yml`) runs on
+  `workflow_dispatch` and monthly, on the 30th at 00:00 UTC (GitHub cron is UTC;
+  February has no 30th, so that month is skipped). It clones
+  `openwrt/{openwrt,packages,luci,routing,telephony}` at `openwrt-25.12` and
+  compares the five HEAD hashes with the previous run through the `HEAD-…` cache
+  key. If anything moved it dispatches `openwrt_source_update`; if not, the run
+  ends after the check.
 
 `Update Checker` dispatches with `${{ github.token }}` (`contents: write`), which
 works because GitHub's "events triggered by `GITHUB_TOKEN` do not create new
 workflow runs" rule does **not** apply to `repository_dispatch` and
 `workflow_dispatch`. No PAT, no secret, nothing to rotate — a fork is ready as
-it is. The build runs on `ubuntu-24.04` and takes roughly two hours from scratch.
+it is. The build job runs on `ubuntu-24.04` and reuses two caches: `openwrt/dl`
+(key `openwrt-dl-<hash of .diffconfig>`) and the ccache/staging tree kept by
+`klever1988/cachewrtbuild`.
 
-Housekeeping runs at the end of a build: old caches (`dl` archives, ccache
-snapshots), runs older than a day and all but the ten newest releases are
-deleted, with the built-in token as well. `Update Checker` prunes more
-aggressively: five newest releases are kept, the rest goes once it is older than
-60 days or has fewer than two downloads.
+Housekeeping runs at the end of a build: all `cache-openwrt*` (ccache) caches, the
+`openwrt-dl-*` caches of older configurations, runs older than one day (at least
+five kept) and all but the ten newest releases are deleted, with the built-in
+token as well. `Update Checker` prunes more aggressively: five newest releases are
+kept, the rest goes once it is older than 60 days or has fewer than two
+downloads.
 
 ### Building locally instead of on Actions
 
@@ -465,20 +493,23 @@ plain writable root, at the cost of that reset path. Most people want squashfs.
 
 ### Why `openwrt-25.12` and not the current stable 24.10?
 
-Because of Go. 25.12 is the first branch whose toolchain is Go 1.26, and the
-Passwall packages need it: on 24.10 (`go 1.23.12`) the build stops with
-`go.mod requires go >= 1.25.5 (running go 1.23.12; GOTOOLCHAIN=local)` for
-sing-box, hysteria and geoview. The trade-off is that 25.12 also switched the
-package manager to `apk`, so opkg-only instructions no longer apply.
+Because of Go. `lang/golang/golang-values.mk` on `openwrt-25.12` sets
+`GO_DEFAULT_VERSION:=1.26`, and the Go programs in the Passwall feed declare
+`go 1.25.5` (sing-box 1.14.4) and `go 1.25.0` (geoview) in their `go.mod`. On
+24.10, whose feed ships Go 1.23.12, the build stops with
+`go.mod requires go >= 1.25.5 (running go 1.23.12; GOTOOLCHAIN=local)`. The
+trade-off is that 25.12 also switched the package manager to `apk`, so opkg-only
+instructions do not apply.
 
 ### Why are some server and cloud NIC drivers missing?
 
 `enic`, `ionic`, `idpf`, `libwx`, `ngbe`, `txgbe`, `nfp`, `gve` and `mana` have
-no `kmod-*` package in the official feed. Building them locally made kernel
-Kconfig prompts visible that no shipped config answers, and OpenWrt runs
-`conf --syncconfig` with `FAIL_ON_UNCONFIGURED=1`, so the build failed at the
-first `... (NEW)` line. They were removed on purpose; use a machine type that
-exposes `virtio-net`, `hv_netvsc`, `vmxnet3`, `e1000e` or `amazon-ena` instead.
+no `kmod-*` package, and adding one in a local `package/kernel/extra-nics/` tree
+does not work either: their drivers expose kernel Kconfig prompts that no shipped
+config file answers, and OpenWrt runs `conf --syncconfig` with
+`FAIL_ON_UNCONFIGURED=1`, so the build stops at the first `... (NEW)` line. Use a
+machine type that exposes `virtio-net`, `hv_netvsc`, `vmxnet3`, `e1000e` or
+`amazon-ena` instead.
 
 ### Why is the serial console disabled, and how do I get it back?
 
@@ -521,9 +552,8 @@ languages are already installed.
 ### Why `apk` and not `opkg`?
 
 25.12 replaced opkg with apk (`apk add`, `apk del`, `apk info`). LuCI's
-"Software" page and Passwall were checked against it, but a third-party plug-in
-whose script calls `opkg` directly will fail; change the script or skip the
-plug-in.
+"Software" page and Passwall work with it; a third-party plug-in whose script
+calls `opkg` directly fails, so change the script or skip the plug-in.
 
 ### Is Attended Sysupgrade (`owut` / ASU) supported?
 
