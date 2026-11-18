@@ -391,6 +391,20 @@ Squashfs keeps the root filesystem read-only and puts your changes in an overlay
 which is why a factory reset is possible and why `sysupgrade` can keep settings;
 ext4 gives a plain writable root and more freedom, at the cost of that reset path.
 
+What the first boot should look like: LuCI answers on `http://192.168.1.1` with no
+password prompt, **System → System** shows the OpenWrt release and kernel 6.12,
+**Network → Interfaces** lists a `wan` and a `lan`, and the package manager
+(`apk` on 25.12) lists the packages from the image. A box that never answers on
+`192.168.1.1` is usually booting from the wrong disk or has the wrong console
+setting for the firmware you flashed.
+
+Going back: there is no rollback partition. Flash another image the same way —
+a stock `openwrt-x86-64-generic-…img.gz` from `downloads.openwrt.org`, or an
+earlier release of this repository. `sysupgrade -n <image>` from LuCI or SSH
+replaces the root filesystem and keeps no settings; writing the image to the
+disk with `dd` replaces the partition table as well. Keep the previous image
+file until the new one has booted.
+
 ## Updating and rebuilding
 
 Two triggers, both on the built-in token:
