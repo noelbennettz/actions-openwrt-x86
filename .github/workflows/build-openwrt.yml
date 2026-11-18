@@ -254,7 +254,13 @@ jobs:
       run: |
         cd bin/targets/*/*/
         rm -rf packages
-        cp ../../../SOURCES.txt .
+        # SOURCES.txt is written by 'Record source revisions' into the openwrt
+        # checkout root (working-directory: openwrt), i.e. three levels above the
+        # target dir *including* the cwd itself - '../../../SOURCES.txt' resolves
+        # to openwrt/bin/SOURCES.txt and failed, which silently left FIRMWARE
+        # unset and killed the release upload. Anchor it on $GITHUB_WORKSPACE so
+        # the path no longer depends on how deep bin/targets/... happens to be.
+        cp "$GITHUB_WORKSPACE/openwrt/SOURCES.txt" .
         echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
@@ -296,7 +302,7 @@ jobs:
         echo "status=success" >> "$GITHUB_OUTPUT"
 
     - name: Upload firmware to release
-      if: steps.tag.outputs.status == 'success' && !cancelled()
+      if: steps.tag.outputs.status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
       env:
         # The built-in token is enough: the job already grants contents: write,
         # so no PAT secret has to exist for the release upload.
@@ -313,9 +319,16 @@ jobs:
         # 'gh release create' occasionally dies with transient API errors (the
         # previous action-gh-release attempt failed with "Too many retries."),
         # so retry the whole operation a few times before giving up.
-        echo "target dir : ${FIRMWARE:-<unset>}"
+        # FIRMWARE comes from the 'Organize files' step via $GITHUB_ENV; if that
+        # step did not run, stop here with a readable message instead of five
+        # pointless retries against an empty glob.
+        if [ -z "${FIRMWARE:-}" ] || [ ! -d "$FIRMWARE" ]; then
+          echo "::error::FIRMWARE is '${FIRMWARE:-<unset>}' - the 'Organize files' step did not produce a firmware directory"
+          exit 1
+        fi
+        echo "target dir : $FIRMWARE"
         echo "tag         : $TAG"
-        ls -la "${FIRMWARE:-/nonexistent}" || true
+        ls -la "$FIRMWARE"
         gh auth status 2>&1 || true
         for i in $(seq 1 5); do
           echo "=== release attempt $i"
