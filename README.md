@@ -1,5 +1,8 @@
 # actions-openwrt-x86 — builds an OpenWrt x86/64 image from official source on GitHub Actions
 
+> Applies to the current `main`. Each release pins the sources it was built from
+> in `SOURCES.txt`, and older documentation is kept under `docs/versions/<tag>/`.
+
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-25.12-00B5E2)](https://github.com/openwrt/openwrt/tree/openwrt-25.12)
 [![Target](https://img.shields.io/badge/target-x86%2F64%20generic-lightgrey)](DOCS.md#what-is-in-the-image)
 [![Kernel](https://img.shields.io/badge/kernel-6.12-lightgrey)](.diffconfig)

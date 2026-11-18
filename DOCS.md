@@ -1,5 +1,8 @@
 # actions-openwrt-x86 — build and image documentation
 
+> Applies to the current `main`. An older release keeps its documentation under
+> `docs/versions/<tag>/`.
+
 Everything about the image, the build and the repository that does not belong in
 the short [README](README.md) lives here.
 
