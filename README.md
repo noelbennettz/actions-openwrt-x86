@@ -8,8 +8,9 @@
 
 The image is built from the official `openwrt/openwrt` branch `openwrt-25.12`
 with kernel 6.12, from the official feeds plus two Passwall feeds, and is
-configured by `.diffconfig` alone: Passwall with sing-box and Hysteria 2, six
-languages, three LuCI themes and 92 network driver packages (69 wired, 3 virtual,
+configured by `.diffconfig` alone: Passwall with sing-box and Hysteria 2, seven
+languages (the six official UN languages plus Traditional Chinese), three LuCI
+themes and 92 network driver packages (69 wired, 3 virtual,
 20 PHY) are added on top of the stock `x86/64` generic target. Every package
 comes from an official feed or from the Passwall feed, so there is no forked
 package tree. A successful run publishes the images both as an Actions artefact

@@ -279,16 +279,16 @@ LuCI entry point: **Services → Passwall**.
 
 ## Languages
 
-All six UN working languages are installed — **Arabic (`ar`), Chinese Simplified
-(`zh_Hans` / `zh-cn`), Chinese Traditional (`zh_Hant` / `zh-tw`), English
-(source language, needs no package), French (`fr`), Russian (`ru`), Spanish
-(`es`)**.
+Seven languages are available: **Arabic (`ar`), English (source language, needs
+no package), French (`fr`), Russian (`ru`), Spanish (`es`) and Simplified
+Chinese (`zh_Hans` / `zh-cn`)** — the six official languages of the United
+Nations — plus **Traditional Chinese (`zh_Hant` / `zh-tw`)**.
 
 `.diffconfig` sets `CONFIG_LUCI_LANG_{ar,es,fr,ru,zh_Hans,zh_Hant}`. In `luci.mk`
 every translation package is declared as
 `DEFAULT:=LUCI_LANG_<lang>||(ALL&&m)`, and kconfig only honours that default
 when the parent component is selected as well, so exactly the components that
-are built receive the six languages and no unused app is pulled in:
+are built receive the six translation packages and no unused app is pulled in:
 
 | Component | Languages |
 | --- | --- |
@@ -515,7 +515,7 @@ packages, not the local configuration.
 
 Theme: `uci set luci.main.mediaurlbase=…; uci commit luci`, or edit
 `files/etc/uci-defaults/50-luci-theme` and rebuild to change the default.
-Language: the LuCI selector under System → System → Language and Style; the six
+Language: the LuCI selector under System → System → Language and Style; the seven
 languages are already installed.
 
 ### Why `apk` and not `opkg`?
