@@ -1,0 +1,204 @@
+#
+# Copyright (c) 2026, MIT (see /LICENSE)
+#
+# File: .github/workflows/validate.yml
+# Description: Pull-request validation. No compiler, no firmware.
+#
+# Three gates:
+#
+#   lint        actionlint (which runs shellcheck on every run: block) on the
+#               workflows, shellcheck on the repo scripts, every YAML parses,
+#               every action pinned by commit SHA, and 'git diff --check' for
+#               whitespace and conflict markers
+#   config      .diffconfig is well formed and every kmod-* package it selects
+#               is still defined by the pinned upstream branch
+#   config-dry  the real dry run: clone OpenWrt, update and install every feed,
+#               run 'make defconfig' and verify that each requested symbol
+#               survived. Minutes, not the two hours of a firmware build.
+#
+# The two-hour firmware build is NOT part of this workflow: it stays manual
+# (Actions -> Build OpenWrt) plus the repository_dispatch from the update
+# checker. Nothing here publishes or deletes anything, so the token only gets
+# contents: read.
+#
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+  schedule:
+    # Weekly: catches upstream feed and tooling drift even when nobody touched
+    # the repository.
+    - cron: '30 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The gate itself has to be reproducible, so its tools are pinned by version
+  # and their release archives are checksum-verified before use.
+  ACTIONLINT_VERSION: '1.7.12'
+  ACTIONLINT_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
+  SHELLCHECK_VERSION: '0.11.0'
+  SHELLCHECK_SHA256: 'b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6'
+  # Must match REPO_BRANCH in build-openwrt.yml.
+  OPENWRT_BRANCH: openwrt-25.12
+
+jobs:
+  lint:
+    name: Workflow and shell lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+    - name: Checkout
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      with:
+        # Full history, so the diff check can reach the base commit.
+        fetch-depth: 0
+
+
+    - name: Install actionlint and shellcheck (pinned, checksum verified)
+      run: |
+        set -euo pipefail
+        bin="$RUNNER_TEMP/bin"
+        mkdir -p "$bin"
+        curl -fsSL -o "$RUNNER_TEMP/actionlint.tgz" \
+          "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+        printf '%s  %s\n' "$ACTIONLINT_SHA256" "$RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+        tar -xzf "$RUNNER_TEMP/actionlint.tgz" -C "$bin" actionlint
+        curl -fsSL -o "$RUNNER_TEMP/shellcheck.tgz" \
+          "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.gz"
+        printf '%s  %s\n' "$SHELLCHECK_SHA256" "$RUNNER_TEMP/shellcheck.tgz" | sha256sum -c -
+        tar -xzf "$RUNNER_TEMP/shellcheck.tgz" -C "$RUNNER_TEMP"
+        install "$RUNNER_TEMP/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" "$bin/shellcheck"
+        echo "$bin" >> "$GITHUB_PATH"
+        "$bin/actionlint" --version | head -n 1
+        "$bin/shellcheck" --version | sed -n '2p'
+
+    # actionlint runs shellcheck on every 'run:' block, so this covers the
+    # inline scripts; the next step covers the scripts in the repository.
+    - name: actionlint
+      run: actionlint -color
+
+    - name: shellcheck
+      run: shellcheck -x scripts/*.sh ./*.sh
+
+    - name: Every YAML file parses
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import glob, sys, yaml
+
+        files = sorted(glob.glob('.github/**/*.yml', recursive=True))
+        if not files:
+            sys.exit('no workflow files found')
+        for path in files:
+            with open(path, encoding='utf-8') as handle:
+                yaml.safe_load(handle)
+            print(f'ok  {path}')
+        PY
+
+    - name: Every action is pinned by commit SHA
+      run: |
+        set -euo pipefail
+        fail=0
+        while IFS= read -r ref; do
+          [ -z "$ref" ] && continue
+          case "$ref" in
+            ./*) continue ;;                    # local action, nothing to pin
+            *@*)
+              sha=${ref##*@}
+              if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "::error::$ref is not pinned to a 40-character commit SHA"
+                fail=1
+              fi
+              ;;
+            *)
+              echo "::error::$ref has no @ref at all"
+              fail=1
+              ;;
+          esac
+        done < <(grep -rhoE 'uses:[[:space:]]*[^[:space:]]+' .github/workflows |
+                 sed -e 's/^uses:[[:space:]]*//' | sort -u)
+        exit "$fail"
+
+    - name: Whitespace, line endings and conflict markers
+      run: |
+        set -euo pipefail
+        base='${{ github.event.pull_request.base.sha }}'
+        if [ -n "$base" ]; then
+          git fetch --no-tags --quiet origin \
+            "${{ github.event.pull_request.base.ref }}"
+        elif git rev-parse --verify --quiet HEAD^ > /dev/null; then
+          base=$(git rev-parse HEAD^)
+        fi
+        if [ -n "$base" ]; then
+          git diff --check "$base..HEAD"
+          echo "git diff --check $base..HEAD: clean"
+        else
+          echo "::warning::no base commit to diff against"
+        fi
+        if grep -rIlE '^(<<<<<<< |>>>>>>> )' --exclude-dir=.git .; then
+          echo "::error::conflict markers found (files listed above)"
+          exit 1
+        fi
+
+
+  config:
+    name: Config and feeds metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+    - name: Checkout
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+    - name: Fetch the upstream kernel module metadata (sparse, no blobs)
+      run: |
+        set -euo pipefail
+        git clone --quiet --depth=1 --filter=blob:none --sparse \
+          -b "$OPENWRT_BRANCH" https://github.com/openwrt/openwrt "$RUNNER_TEMP/openwrt"
+        git -C "$RUNNER_TEMP/openwrt" sparse-checkout set package/kernel target/linux
+
+    - name: Validate .diffconfig against that metadata
+      run: scripts/validate-diffconfig.sh --upstream "$RUNNER_TEMP/openwrt"
+
+  config-dry:
+    name: Config and feeds dry validation (make defconfig, no compile)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+    - name: Checkout
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+    - name: Install the build dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo apt-get -qq update
+        sudo apt-get -qq install -y build-essential bison flex gawk gettext \
+          git libncurses-dev libssl-dev python3 rsync unzip zlib1g-dev
+
+    - name: Clone OpenWrt, add the feeds and install them
+      run: |
+        set -euo pipefail
+        git clone --quiet --depth=1 --filter=blob:none \
+          -b "$OPENWRT_BRANCH" https://github.com/openwrt/openwrt openwrt
+        cd openwrt
+        bash ../diy-part1.sh          # adds the two Passwall feeds
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Apply the build recipe and run make defconfig
+      run: |
+        set -euo pipefail
+        cd openwrt
+        cp ../.diffconfig .config
+        if [ -d ../files ]; then cp -a ../files .; fi
+        bash ../diy-part2.sh
+        make defconfig
+        grep -c '^CONFIG_' .config
+
+    - name: Every requested symbol survived
+      run: scripts/check-defconfig.sh openwrt/.config .diffconfig

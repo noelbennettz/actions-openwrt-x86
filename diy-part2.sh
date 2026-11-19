@@ -39,6 +39,9 @@ if [ "$ENABLE_SERIAL_CONSOLE" = "0" ] && [ -f "$X86_IMAGE_MK" ]; then
   if grep -q 'diy-part2.sh: serial console disabled' "$X86_IMAGE_MK"; then
     echo "diy-part2: serial console already disabled, nothing to do"
   elif grep -q '^GRUB_TERMINALS += serial$' "$X86_IMAGE_MK"; then
+    # The single-quoted sed programs below must stay single-quoted: $(GRUB_SERIAL)
+    # is matched *literally* in the upstream Makefile, it is not shell code.
+    # shellcheck disable=SC2016
     sed -i \
       -e 's|^GRUB_CONSOLE_CMDLINE += console=$(GRUB_SERIAL),.*|# diy-part2.sh: serial console disabled|' \
       -e 's|^GRUB_SERIAL_CONFIG := serial .*|GRUB_SERIAL_CONFIG :=|' \
