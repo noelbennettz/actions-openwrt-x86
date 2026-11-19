@@ -492,11 +492,18 @@ hides exactly the prompt that breaks CI.
 | `files/` | Files copied into the image (`etc/uci-defaults/50-luci-theme` theme default, `etc/sysctl.d/20-ipv6-accept-ra.conf` IPv6 sysctl) |
 | `.github/workflows/build-openwrt.yml` | Main build: source, feeds, compile, release upload, housekeeping |
 | `.github/workflows/update-checker.yml` | Monthly upstream check, dispatch, release pruning |
+| `.github/dependabot.yml` | Weekly PRs that move the pinned action SHAs to the next release |
 | `.editorconfig` | Editor defaults (UTF-8, LF, final newline) |
 | `README.md` | Short overview: requirements, use, documentation index, licence |
 | `DOCS.md` | This file |
 | `SOURCE.md` | Where the source of a published image is |
 | `LICENSE` | MIT, from the P3TERX template |
+
+Every third-party action in `.github/workflows/` is pinned by full commit SHA
+with its release tag in a trailing comment, so a run executes exactly the code
+that was reviewed — a moved or re-pointed tag cannot change what runs.
+`.github/dependabot.yml` opens a weekly PR that rewrites both the SHA and the
+comment; `klever1988/cachewrtbuild` publishes no tags and is bumped by hand.
 
 ## FAQ
 
