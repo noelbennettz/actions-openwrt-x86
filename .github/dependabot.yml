@@ -1,0 +1,31 @@
+# Keep the SHA pins in .github/workflows/*.yml current.
+#
+# Every third-party action is pinned by full commit SHA, so nothing follows a
+# moving branch or tag. Dependabot recognises the
+# "uses: owner/repo@<sha> # vX.Y.Z" form and opens a PR that rewrites both the
+# SHA and the comment, which keeps the review honest: the diff shows the
+# upstream changelog link for exactly the commits being adopted.
+#
+# NOTE: klever1988/cachewrtbuild publishes no releases or tags, so Dependabot
+# cannot track it; that pin is bumped by hand (see the comment at the pin).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      # One PR for the routine bumps, so the pins cannot drift apart and each
+      # group is still reviewable as a single "actions versions" change.
+      actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

@@ -8,6 +8,9 @@
 # File: .github/workflows/update-checker.yml
 # Description: Source code update checker
 #
+# Third-party actions are pinned by full commit SHA (tag in the trailing
+# comment); see the note at the top of build-openwrt.yml.
+#
 
 name: Update Checker
 
@@ -65,7 +68,7 @@ jobs:
 
     - name: Compare Commit Hash
       id: cacheHash
-      uses: actions/cache@v5
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: .commitHash_All
         key: HEAD-${{ steps.combHeader.outputs.commitHash_All }}
@@ -76,7 +79,7 @@ jobs:
         printf '%s\n' '${{ steps.combHeader.outputs.commitHash_All }}' > .commitHash_All
 
     - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
+      uses: Mattraks/delete-workflow-runs@b3018382ca039b53d238908238bd35d1fb14f8ee # v2.1.0
       with:
         token: ${{ github.token }}
         repository: ${{ github.repository }}
@@ -133,7 +136,7 @@ jobs:
 
     # Housekeeping: this workflow runs monthly; one page of history is enough.
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
     - name: Delete every run but the three newest
       if: always()

@@ -7,6 +7,11 @@
 # https://github.com/P3TERX/Actions-OpenWrt
 # Description: Build official OpenWrt using GitHub Actions
 #
+# Every third-party action is pinned by the full commit SHA it resolved to,
+# with the release tag in a trailing comment. A tag can be moved by its owner;
+# a commit SHA cannot, so a run can only ever execute the code that was
+# reviewed here. Dependabot (.github/dependabot.yml) keeps the pins current.
+#
 
 name: Build OpenWrt
 
@@ -43,13 +48,13 @@ jobs:
 
     steps:
     - name: Checkout main-repo
-      uses: actions/checkout@v5
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       with:
         path: main-repo
 
     # ---- CI environment setup below (nothing to do with firmware contents) ----
     - name: Free Disk Space (Ubuntu)
-      uses: jlumbroso/free-disk-space@main
+      uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
       with:
         preinstalled-runtimes: true
         android: true
@@ -78,7 +83,7 @@ jobs:
 
     - name: Clone source code
       run: |
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        git clone "$REPO_URL" -b "$REPO_BRANCH" openwrt
         mkdir -p openwrt/dl
 
     # ---- Build acceleration caches (dl downloads + ccache/staging) ----
@@ -87,15 +92,18 @@ jobs:
       run: echo "DL_CACHE_KEY=openwrt-dl-${{ hashFiles('main-repo/.diffconfig') }}" >> "$GITHUB_ENV"
 
     - name: Cache dl
-      uses: actions/cache@v5
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: openwrt/dl
         key: ${{ env.DL_CACHE_KEY }}
         restore-keys: |
           openwrt-dl-
 
+    # klever1988/cachewrtbuild has no tags at all, so the pin is the commit
+    # that "main" resolved to when this line was written; Dependabot cannot
+    # track a repository without releases, so it has to be bumped by hand.
     - name: Cache
-      uses: klever1988/cachewrtbuild@main
+      uses: klever1988/cachewrtbuild@b729f807837dbc3455d02fd35192660d9b662121 # main, 2024-11-15
       with:
         ccache: 'true'
         clean: 'false'
@@ -133,7 +141,7 @@ jobs:
     # ---- Debug only: workflow_dispatch with ssh=true opens a tmate session ----
     # Not part of the upstream template, safe to drop.
     - name: SSH connection to Actions
-      uses: P3TERX/ssh2actions@v1.0.0
+      uses: P3TERX/ssh2actions@71006b93bff498b020448ac10964f8a5d0f9f32c # v1.0.0
       if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
       env:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -192,7 +200,7 @@ jobs:
           [ "$rc" -ne 0 ] && echo "::error::focused $pkg: $(tail -n 60 "$out" | tr '\n' ' ' | cut -c1-3000)"
           return "$rc"
         }
-        make -j$(nproc) 2>&1 | tee /tmp/build.log
+        make -j"$(nproc)" 2>&1 | tee /tmp/build.log
         rc=${PIPESTATUS[0]}
         if [ "$rc" -ne 0 ]; then
           report_failure /tmp/build.log
@@ -222,7 +230,7 @@ jobs:
       run: df -hT
 
     - name: Upload bin directory
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -265,7 +273,7 @@ jobs:
         echo "status=success" >> "$GITHUB_OUTPUT"
 
     - name: Upload firmware directory
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -296,9 +304,17 @@ jobs:
         sed -i '1i ## Firmware Update Log' release.txt
         # GPL-2.0: attach the source offer to the release notes. SOURCES.txt is
         # written by the 'Record source revisions' step and copied next to the
-        # image, so the revisions travel with the firmware.
-        printf '\n## Source\n\nOpenWrt %s plus the feeds pinned in `SOURCES.txt` (attached);\nbuild configuration: `.diffconfig` at https://github.com/%s/tree/%s\n' \
-          "$REPO_BRANCH" "$GITHUB_REPOSITORY" "$GITHUB_SHA" >> release.txt
+        # image, so the revisions travel with the firmware. Written with printf
+        # instead of a heredoc: a heredoc body cannot be indented inside a
+        # 'run: |' block, and a quoted heredoc is needed to keep the file names
+        # literal.
+        {
+          printf '\n## Source\n\n'
+          printf 'OpenWrt %s plus the feeds pinned in SOURCES.txt (attached);\n' \
+            "$REPO_BRANCH"
+          printf 'build configuration: .diffconfig in the repository at %s\n' \
+            "https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA"
+        } >> release.txt
         echo "status=success" >> "$GITHUB_OUTPUT"
 
     - name: Upload firmware to release
