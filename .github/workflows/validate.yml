@@ -120,8 +120,9 @@ jobs:
               fail=1
               ;;
           esac
-        done < <(grep -rhoE 'uses:[[:space:]]*[^[:space:]]+' .github/workflows |
-                 sed -e 's/^uses:[[:space:]]*//' | sort -u)
+        done < <(grep -rhE '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]' .github/workflows |
+                 sed -n 's/^[[:space:]]*-*[[:space:]]*uses:[[:space:]]*\([^[:space:]#]*\).*/\1/p' |
+                 sort -u)
         exit "$fail"
 
     - name: Whitespace, line endings and conflict markers
