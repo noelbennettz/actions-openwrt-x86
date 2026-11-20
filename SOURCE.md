@@ -13,9 +13,14 @@ source is:
    where to fetch it; the `build-config` line does the same for this repository.
 2. `REPRODUCE.txt`, also attached, carries the same revisions in the form the
    `Build OpenWrt` workflow takes: `source_commit=` and `feed_commit=`.
-3. `config.buildinfo`, also attached, is the full `.config` the image was built
+3. `PACKAGES.txt` lists every installed package with its version, `NOTICES.txt`
+   groups those packages by the licence they declare, and `sbom.spdx.json` is
+   the SPDX SBOM of the release directory. `SHA256SUMS` covers all of it, and
+   every file is bound to the workflow run that produced it by a GitHub artifact
+   attestation (`gh attestation verify <file> -R <owner>/<repo>`).
+4. `config.buildinfo` is the full `.config` the image was built
    with — every package and every version-suffixed symbol in it.
-4. The build configuration is `.diffconfig` at the commit the release tag points
+5. The build configuration is `.diffconfig` at the commit the release tag points
    to (`git checkout <tag>` in this repository).
 
 To read or rebuild the source of any GPL-2.0 component:

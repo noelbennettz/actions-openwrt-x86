@@ -406,6 +406,30 @@ is removed) plus `SOURCES.txt`; the release notes carry the
 `routing` and `telephony`, followed by a `## Source` section pointing at the
 branch and the `.diffconfig` commit.
 
+Four extra files are generated before the upload, so they are in both the
+artefact and the release:
+
+| File | What it is |
+| --- | --- |
+| `SHA256SUMS` | SHA-256 of every other file in the release (`sha256sum -c SHA256SUMS`) |
+| `sbom.spdx.json` | SPDX 2.3 SBOM of the release directory, produced by `syft` pinned to v1.57.2 through `anchore/sbom-action` |
+| `PACKAGES.txt` | installed packages with their versions, from the target `.manifest` |
+| `NOTICES.txt` | licence inventory grouped by licence, from the `apk` database in the rootfs staging tree |
+
+There is no cosign key and no signing secret: provenance comes from
+`actions/attest-build-provenance`, which signs a statement with the workflow's
+OIDC identity and stores it as a repository attestation. Verify a download with
+
+```sh
+gh attestation verify openwrt-x86-64-generic-squashfs-combined-efi.img.gz \
+  -R <owner>/<repo>
+gh attestation verify --help   # --format json, --predicate-type, ...
+```
+
+`PACKAGES.txt` and `NOTICES.txt` describe what the package metadata declares
+(`PKG_LICENSE` upstream); they are an inventory, not a legal review of the
+aggregate, and `NOTICES.txt` says so at the top.
+
 | File | Use |
 | --- | --- |
 | `openwrt-x86-64-generic-squashfs-combined-efi.img.gz` | **UEFI**, squashfs + writable overlay (recommended) |
@@ -416,6 +440,7 @@ branch and the `.diffconfig` commit.
 | `openwrt-x86-64-generic-kernel.bin` | kernel and initramfs bundle |
 | `openwrt-x86-64-generic.manifest`, `sha256sums`, `profiles.json`, `config.buildinfo`, `feeds.buildinfo`, `version.buildinfo` | package list, checksums, build metadata |
 | `SOURCES.txt` | exact commit of OpenWrt and of every feed (see [SOURCE.md](SOURCE.md)) |
+| `SHA256SUMS`, `sbom.spdx.json`, `PACKAGES.txt`, `NOTICES.txt` | checksums, SPDX SBOM, package versions, licence inventory |
 
 Flash it with `dd`, balenaEtcher or Rufus, or from an existing OpenWrt with
 `sysupgrade -n /tmp/openwrt-x86-64-generic-squashfs-combined-efi.img.gz`. On
