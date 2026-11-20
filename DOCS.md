@@ -1,7 +1,8 @@
 # actions-openwrt-x86 — build and image documentation
 
-> Applies to the current `main`. An older release keeps its documentation under
-> `docs/versions/<tag>/`.
+> Applies to the current `main`. Each release's `SOURCES.txt` names its
+> `build-config` commit, and the `DOCS.md` at that commit is the documentation
+> the release was built with.
 
 Everything about the image, the build and the repository that does not belong in
 the short [README](README.md) lives here.
@@ -566,7 +567,7 @@ Policies, all enforced automatically and all deliberate:
 
 | Object | Policy | Enforced by |
 | --- | --- | --- |
-| ccache caches (`cache-openwrt*`) | deleted after every successful build | `prune` job |
+| ccache caches (`cache-openwrt*`) | all but the newest deleted after every successful build | `prune` job |
 | `openwrt-dl-*` caches | only the one for the current `.diffconfig` hash is kept | `prune` job |
 | workflow runs | newest three per workflow | `scripts/prune-runs.sh 3` |
 | artifacts | deleted after 30 days, plus every artifact of a deleted run | `scripts/prune-artifacts.sh 30` |
@@ -586,8 +587,11 @@ checks out exactly those commits, so a rerun cannot drift to a newer branch head
 1. `Resolve the source revision` pins the commit of `openwrt/openwrt` (the head
    of `openwrt-25.12`, or the `source_commit` input when one is given) and
    `Clone source code` checks it out detached and verifies `HEAD`.
-2. `Update feeds` clones the seven feeds; `Pin feeds to the requested revisions`
-   checks each one out at the `feed_commit` SHA when that input is set.
+2. `Update feeds` clones the feeds with `git clone --depth 1` (that is what
+   upstream `scripts/feeds` does), so a shallow clone does not contain an older
+   pinned commit; `Pin feeds to the requested revisions` fetches that commit
+   first (and unshallows the clone when the server refuses a bare SHA fetch),
+   then checks each feed out at the `feed_commit` SHA and verifies `HEAD`.
 3. `Record source revisions` writes `SOURCES.txt` — `name ref commit url` per
    repository, plus the `build-config` line of this repository — and fails the
    build if any recorded commit differs from the checked-out tree.

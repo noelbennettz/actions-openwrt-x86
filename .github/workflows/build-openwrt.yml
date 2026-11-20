@@ -202,6 +202,16 @@ jobs:
             echo "::error::feeds/$name does not exist; check the name against feeds.conf.default"
             exit 1
           fi
+          # 'feeds update' clones with 'git clone --depth 1' (scripts/feeds),
+          # so a pinned commit that is not the current branch head is not in
+          # the object database and the checkout below would die with
+          # "reference is not a tree". Fetch the commit explicitly; a server
+          # that refuses a bare SHA fetch gets the full history instead.
+          if ! git -C "feeds/$name" cat-file -e "$sha^{commit}" 2> /dev/null; then
+            echo "feeds/$name: fetching pinned commit $sha"
+            git -C "feeds/$name" fetch --depth 1 origin "$sha" > /dev/null 2>&1 ||
+              git -C "feeds/$name" fetch --unshallow origin
+          fi
           git -C "feeds/$name" checkout --detach "$sha"
           actual=$(git -C "feeds/$name" rev-parse HEAD)
           if [ "$actual" != "$sha" ]; then
@@ -657,7 +667,13 @@ jobs:
         echo "$DATA" | jq -r '.[] | "\(.createdAt) \(.id) \(.key)"'
 
         delete_ids=$(echo "$DATA" | jq -r --arg dl "${DL_CACHE_KEY:-}" '
-          ( [.[] | select(.key | startswith("cache-openwrt"))] | map(.id) )
+          # Keep the newest ccache/staging tree: cachewrtbuild restores by key
+          # prefix, so that is the one the next build picks up. This used to
+          # delete every cache-openwrt* entry, including the ~700 MB the same
+          # run had just uploaded one minute earlier, which meant no build ever
+          # had a warm ccache to restore.
+          ( [.[] | select(.key | startswith("cache-openwrt"))]
+            | sort_by(.createdAt) | reverse | .[1:] | map(.id) )
           +
           ( [.[] | select((.key | startswith("openwrt-dl-")) and .key != $dl)] | map(.id) )
           | .[]
