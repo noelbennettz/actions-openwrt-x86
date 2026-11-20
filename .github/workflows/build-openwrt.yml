@@ -408,6 +408,15 @@ jobs:
         # the path no longer depends on how deep bin/targets/... happens to be.
         cp "$GITHUB_WORKSPACE/openwrt/SOURCES.txt" .
         cp "$GITHUB_WORKSPACE/openwrt/REPRODUCE.txt" .
+        # OpenWrt writes its own bin/targets/*/sha256sums, and release asset
+        # names are unique regardless of case, so it collides with the
+        # SHA256SUMS generated below: 'gh release create' uploaded SHA256SUMS
+        # and then died with "ReleaseAsset.name already exists" on
+        # sha256sums, five times, without publishing anything. Our SHA256SUMS
+        # hashes every file the release carries (the SBOM included), so the
+        # upstream list is redundant - drop it here instead of shipping two
+        # checksum files whose names differ only in case.
+        rm -f sha256sums
         echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
         echo "status=success" >> "$GITHUB_OUTPUT"
 

@@ -417,6 +417,12 @@ artefact and the release:
 | `PACKAGES.txt` | installed packages with their versions, from the target `.manifest` |
 | `NOTICES.txt` | licence inventory grouped by licence, from the `apk` database in the rootfs staging tree |
 
+`SHA256SUMS` replaces the `sha256sums` OpenWrt writes into `bin/targets/*/*/`,
+which is removed before the upload: release asset names are unique ignoring
+case, so the two names collide, and the generated file hashes every asset the
+release carries, the SBOM included, where the upstream one covers the image
+directory only.
+
 There is no cosign key and no signing secret: provenance comes from
 `actions/attest-build-provenance`, which signs a statement with the workflow's
 OIDC identity and stores it as a repository attestation. Verify a download with
@@ -439,7 +445,7 @@ aggregate, and `NOTICES.txt` says so at the top.
 | `openwrt-x86-64-generic-{squashfs,ext4}-rootfs.img.gz` | root filesystem on its own |
 | `openwrt-x86-64-generic-rootfs.tar.gz`, `openwrt-x86-64-generic-targz-rootfs.tar.gz` | container / manual extraction (`CONFIG_TARGET_ROOTFS_TARGZ`) |
 | `openwrt-x86-64-generic-kernel.bin` | kernel and initramfs bundle |
-| `openwrt-x86-64-generic.manifest`, `sha256sums`, `profiles.json`, `config.buildinfo`, `feeds.buildinfo`, `version.buildinfo` | package list, checksums, build metadata |
+| `openwrt-x86-64-generic.manifest`, `profiles.json`, `config.buildinfo`, `feeds.buildinfo`, `version.buildinfo` | package list, build metadata |
 | `SOURCES.txt` | exact commit of OpenWrt and of every feed (see [SOURCE.md](SOURCE.md)) |
 | `SHA256SUMS`, `sbom.spdx.json`, `PACKAGES.txt`, `NOTICES.txt` | checksums, SPDX SBOM, package versions, licence inventory |
 
