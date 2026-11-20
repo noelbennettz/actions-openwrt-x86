@@ -39,7 +39,9 @@ instead needs a Linux host with the OpenWrt build dependencies (`gawk`, `flex`,
 ## Use
 
 Trigger **Actions → Build OpenWrt → Run workflow**, leave `source_commit` and
-`feed_commit` empty, and wait about two hours.
+`feed_commit` empty, and wait about an hour (a cache-less first build takes a
+little longer; the run reuses the `dl/` mirror and the ccache of the previous
+build).
 The result appears as the artefact `OpenWrt_firmware_generic_<YYYYMMDDHHMM>` in
 the run and as a release tagged `OpenWrt_openwrt-25.12_<YYYYMMDDHHMM>` under
 **Releases**. To rebuild a release from exactly the same sources, paste the two

@@ -702,7 +702,7 @@ checker when upstream moves.
 `Build OpenWrt` runs the same `scripts/check-defconfig.sh` check itself, right
 after `make defconfig` and before `make download`: a package that upstream
 renamed or dropped between two weekly Validate runs would otherwise be skipped
-silently and the release would ship without it, two hours later.
+silently and the release would ship without it, an hour later.
 
 ## FAQ
 
