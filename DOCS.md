@@ -561,7 +561,9 @@ ccache/staging tree kept by `klever1988/cachewrtbuild`.
 | `prune-runs-before` / `prune-runs-after` | `actions: write`, `contents: read` | keep the three newest runs of this workflow, at the start and again at the end of every run |
 
 `Update Checker` is split the same way (`check` → `read`, `dispatch` →
-`contents: write`, `housekeeping` → `actions: write` + `contents: write`).
+`contents: write`, `housekeeping` → `actions: write` + `contents: write`); its
+`housekeeping` job is the end-of-run prune, and it is the only place that also
+deletes old releases.
 `Validate` and `QEMU boot smoke test` grant `actions: write` only to their
 `prune-runs-before` / `prune-runs-after` jobs. Every one of those jobs uses
 nothing but `${{ github.token }}` — no PAT, no secret, no cache key — so a fresh
