@@ -8,10 +8,14 @@ upstream licences. Nothing in it is closed, and every release states where its
 source is:
 
 1. `SOURCES.txt`, attached to every release, pins the exact commit of OpenWrt and
-   of each feed the image was built from.
-2. `config.buildinfo`, also attached, is the full `.config` the image was built
+   of each feed the image was built from. One line per repository —
+   `name ref commit url` — so it names the branch, the 40-character commit and
+   where to fetch it; the `build-config` line does the same for this repository.
+2. `REPRODUCE.txt`, also attached, carries the same revisions in the form the
+   `Build OpenWrt` workflow takes: `source_commit=` and `feed_commit=`.
+3. `config.buildinfo`, also attached, is the full `.config` the image was built
    with — every package and every version-suffixed symbol in it.
-3. The build configuration is `.diffconfig` at the commit the release tag points
+4. The build configuration is `.diffconfig` at the commit the release tag points
    to (`git checkout <tag>` in this repository).
 
 To read or rebuild the source of any GPL-2.0 component:
@@ -24,10 +28,13 @@ git checkout "$(awk '$1=="openwrt"{print $3}' SOURCES.txt)"
 ./scripts/feeds install -a
 ```
 
-The feeds are the official `packages`, `luci`, `routing` and `telephony` feeds
-from `feeds.conf.default`, plus the two Passwall feeds that `diy-part1.sh`
-prepends (`Openwrt-Passwall/openwrt-passwall-packages` and
-`Openwrt-Passwall/openwrt-passwall`, branch `main`).
+The feeds are the official `packages`, `luci`, `routing`, `telephony` and
+`video` feeds from `feeds.conf.default`, plus the two Passwall feeds that
+`diy-part1.sh` prepends (`Openwrt-Passwall/openwrt-passwall-packages` and
+`Openwrt-Passwall/openwrt-passwall`, branch `main`). Their commits are recorded
+in `SOURCES.txt` like every other repository, so the Passwall part of a released
+image is pinned too — the feeds are not rebuilt from whatever `main` points to
+on the day someone reads the offer.
 
 The only changes this recipe makes to upstream sources are the two edits in
 `diy-part2.sh` (strip the serial console from the x86 GRUB config, hide the

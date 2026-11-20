@@ -36,10 +36,14 @@ instead needs a Linux host with the OpenWrt build dependencies (`gawk`, `flex`,
 
 ## Use
 
-Trigger **Actions → Build OpenWrt → Run workflow**, leave the `ssh` input at
-`false`, and wait about two hours. The result appears as the artefact
-`OpenWrt_firmware_generic_<YYYYMMDDHHMM>` in the run and as a release tagged
-`OpenWrt_openwrt-25.12_<YYYYMMDDHHMM>` under **Releases**.
+Trigger **Actions → Build OpenWrt → Run workflow**, leave `source_commit` and
+`feed_commit` empty, leave the `ssh` input at `false`, and wait about two hours.
+The result appears as the artefact `OpenWrt_firmware_generic_<YYYYMMDDHHMM>` in
+the run and as a release tagged `OpenWrt_openwrt-25.12_<YYYYMMDDHHMM>` under
+**Releases**. To rebuild a release from exactly the same sources, paste the two
+values of its `REPRODUCE.txt` into those inputs (`source_commit`, and the
+`name=sha` pairs as `feed_commit`) — see
+[DOCS.md#reproducing-a-published-release](DOCS.md#reproducing-a-published-release).
 
 For flashing, pick one file and write it to the target disk:
 
