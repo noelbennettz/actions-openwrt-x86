@@ -222,7 +222,9 @@ jobs:
           mv ../main-repo/files files
         fi
         if [ -e "../main-repo/$CONFIG_FILE" ]; then
-          mv "../main-repo/$CONFIG_FILE" .config
+          # Copied, not moved: 'Prepare config' compares the generated .config
+          # against this file to prove every requested symbol survived.
+          cp "../main-repo/$CONFIG_FILE" .config
         fi
         chmod +x "../main-repo/$DIY_P2_SH"
         "../main-repo/$DIY_P2_SH"
@@ -234,9 +236,16 @@ jobs:
     # with required reviewers, which is a repository setting this workflow
     # cannot create.
 
+    # 'make defconfig' drops a symbol whose package disappeared upstream or
+    # whose dependency no longer resolves, without failing. Validate catches
+    # that on PRs and once a week; between those runs the build would happily
+    # ship without the package, so the same check runs here, before the two
+    # hours of compiling.
     - name: Prepare config
       working-directory: openwrt
-      run: make defconfig
+      run: |
+        make defconfig
+        bash ../main-repo/scripts/check-defconfig.sh .config "../main-repo/$CONFIG_FILE"
 
     - name: Download packages
       working-directory: openwrt

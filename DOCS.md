@@ -689,6 +689,11 @@ release; it runs with `contents: read`. The firmware build stays manual
 (**Actions → Build OpenWrt**) and is additionally dispatched by the update
 checker when upstream moves.
 
+`Build OpenWrt` runs the same `scripts/check-defconfig.sh` check itself, right
+after `make defconfig` and before `make download`: a package that upstream
+renamed or dropped between two weekly Validate runs would otherwise be skipped
+silently and the release would ship without it, two hours later.
+
 ## FAQ
 
 ### Which image should I flash — EFI or BIOS, squashfs or ext4?
