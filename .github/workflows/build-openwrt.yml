@@ -557,7 +557,10 @@ jobs:
     needs: build
     if: needs.build.outputs.release_tag != ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # ~600 MB of assets over the API: 20 minutes was never exercised (every
+    # run so far failed before the upload), so do not make the timeout the next
+    # failure.
+    timeout-minutes: 45
     # The only job allowed to write to the repository.
     permissions:
       contents: write

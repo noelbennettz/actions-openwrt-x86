@@ -12,9 +12,12 @@
 # comment); see the note at the top of build-openwrt.yml.
 #
 # Three jobs, so writing is scoped to the ones that need it:
-#   check         reads upstream commit ids (contents: read, cache)
+#   check         reads upstream commit ids (contents: read)
 #   dispatch      asks for a build (contents: write, only when something moved)
 #   housekeeping  prunes runs and releases (actions: write, contents: write)
+#
+# The source list comes from the pinned tree itself (feeds.conf.default after
+# diy-part1.sh), not from a table here; see the 'Get Commit Hash' step.
 #
 
 name: Update Checker
@@ -40,45 +43,67 @@ jobs:
   check:
     name: Compare upstream commits
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # Clones eight repositories, five of them from git.openwrt.org. 20 minutes
+    # was enough for the GitHub mirrors, but do not let a slow upstream mirror
+    # be the thing that stops the check.
+    timeout-minutes: 30
     outputs:
       changed: ${{ steps.decide.outputs.changed }}
     steps:
 
-    # Every source the build actually clones, as a name|url|branch table: the
-    # official openwrt tree, every official feed of feeds.conf.default
-    # (packages / luci / routing / telephony / video, all at REPO_BRANCH) and
-    # the two Passwall feeds that diy-part1.sh prepends at their 'main' branch.
-    # The names are the ones SOURCES.txt uses ('name ref commit url'), because
-    # the comparison below joins on the name column.
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        path: main-repo
+
+    # The source list is not hard-coded. Clone the pinned OpenWrt tree, let
+    # diy-part1.sh add its feeds to feeds.conf.default exactly the way the build
+    # does, then take every source from that file: a feed upstream adds, or a
+    # URL/branch that changes, needs no second list to drift out of sync. The
+    # clone URLs are the ones the build's 'feeds update' uses - git.openwrt.org
+    # for the official feeds, not the GitHub mirrors, which lag behind and used
+    # to dispatch a build for a commit the build would never have picked up.
     - name: Get Commit Hash
       id: getHash
       run: |
         set -euo pipefail
-        table="$RUNNER_TEMP/sources.table"
-        {
-          printf 'openwrt|https://github.com/openwrt/openwrt|%s\n' "$REPO_BRANCH"
-          for feed in packages luci routing telephony video; do
-            printf '%s|https://github.com/openwrt/%s|%s\n' \
-              "$feed" "$feed" "$REPO_BRANCH"
-          done
-          printf 'passwall_packages|%s|main\n' \
-            'https://github.com/Openwrt-Passwall/openwrt-passwall-packages'
-          printf 'passwall_luci|%s|main\n' \
-            'https://github.com/Openwrt-Passwall/openwrt-passwall'
-        } > "$table"
+        git clone --filter=blob:none --depth=1 -b "$REPO_BRANCH" \
+          https://github.com/openwrt/openwrt openwrt
+        ( cd openwrt && bash ../main-repo/diy-part1.sh )
 
         # name<TAB>full sha, one line per source. Full SHAs, so the comparison
         # with SOURCES.txt (which records full SHAs) needs no prefix guessing.
         : > .commitHash_All
-        while IFS='|' read -r name url branch; do
-          [ -n "$name" ] || continue
-          # Depth 1 and no blobs: only the head commit of that branch is needed.
-          git clone --filter=blob:none --depth=1 -b "$branch" "$url" "$name"
+        record() {
+          local name=$1 sha
           sha=$(git -C "$name" rev-parse HEAD)
           printf '%s\t%s\n' "$name" "$sha" >> .commitHash_All
-          printf '%-18s %s (%s@%s)\n' "$name" "$sha" "$url" "$branch"
-        done < "$table"
+          printf '%-18s %s\n' "$name" "$sha"
+        }
+        record openwrt
+
+        # 'src-git name url[;branch]', the form feeds.conf.default and
+        # diy-part1.sh use. Anything else would be cloned by 'feeds update' but
+        # is not handled here, so fail instead of silently not watching it.
+        while read -r kind name rest; do
+          [ -n "${kind:-}" ] || continue
+          case "$kind" in
+            \#*) continue ;;
+            src-git) ;;
+            *) echo "::error::$kind lines are not supported by the update checker"; exit 1 ;;
+          esac
+          url=${rest%%;*}
+          branch=''
+          case "$rest" in
+            *';'*) branch=${rest#*;} ;;
+          esac
+          if [ -n "$branch" ]; then
+            git clone --filter=blob:none --depth=1 -b "$branch" "$url" "$name"
+          else
+            git clone --filter=blob:none --depth=1 "$url" "$name"
+          fi
+          record "$name"
+        done < openwrt/feeds.conf.default
         cat .commitHash_All
 
     # A cache marker used to short-circuit this ("heads already seen -> nothing

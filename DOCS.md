@@ -481,8 +481,11 @@ file until the new one has booted.
 checks that it actually comes up — a separate workflow, so a hypervisor problem
 can never block a release.
 
-- It runs after every successful `Build OpenWrt`, and on demand with a run id
-  (**Actions → QEMU boot smoke test → Run workflow**).
+- It runs after every `Build OpenWrt` whose **build job** succeeded, and on
+  demand with a run id (**Actions → QEMU boot smoke test → Run workflow**). A
+  failed *release* step turns the run red but still leaves the firmware
+  artifact, so that case is tested too; only a cancelled or failed build has
+  nothing to boot.
 - It downloads the `OpenWrt_firmware*` artifact of that run (the same bytes the
   release carries), unpacks it and boots
   `openwrt-x86-64-generic-squashfs-combined.img.gz` with
@@ -520,14 +523,17 @@ Two triggers, both on the built-in token:
   Pushing to `main` starts nothing.
 - **`Update Checker`** (`.github/workflows/update-checker.yml`) runs on
   `workflow_dispatch` and on the **1st and 15th** of every month at 00:00 UTC
-  (the old "30th" schedule silently skipped February). It clones **all eight
-  sources the build uses** — `openwrt/openwrt` and the official feeds
-  `packages`, `luci`, `routing`, `telephony`, `video` at `openwrt-25.12`, plus
-  `Openwrt-Passwall/openwrt-passwall-packages` and
-  `Openwrt-Passwall/openwrt-passwall` at `main` — writes `name<TAB>full-sha`
+  (the old "30th" schedule silently skipped February). It does not keep its own
+  list of sources: it clones the pinned OpenWrt tree, runs `diy-part1.sh` so
+  `feeds.conf.default` gets the Passwall feeds exactly as in the build, and then
+  clones **every source in that file** at the same URL and branch the build's
+  `feeds update` uses (`openwrt/openwrt` plus the official feeds from
+  `git.openwrt.org`, and the two `Openwrt-Passwall` feeds at `main` — eight
+  today, but a feed added upstream needs no second list here). It writes
+  `name<TAB>full-sha`
   per source and compares that with the `SOURCES.txt` of the newest release,
   i.e. with what the last published build actually compiled. A build is
-  dispatched only if one of the eight really differs, or if a source the build
+  dispatched only if one of them really differs, or if a source the build
   uses is missing from that `SOURCES.txt` and therefore cannot be shown
   unchanged; with no release yet, it builds once. There is no "seen this
   combination" marker cache any more: it used to skip the comparison, which also

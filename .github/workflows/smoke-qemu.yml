@@ -34,8 +34,11 @@ jobs:
     name: Boot the image and probe LuCI
     runs-on: ubuntu-24.04
     timeout-minutes: 40
-    # A failed build has no firmware to boot; everything else is worth testing.
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # The build job uploads the firmware before the release job runs, so a run
+    # whose *release* failed still has an image worth booting. Only a cancelled
+    # (or never started) build has nothing to test; whether the build itself
+    # succeeded is checked in the first step, against the run's jobs.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion != 'cancelled'
     steps:
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,19 +52,41 @@ jobs:
         sudo apt-get -qq install -y qemu-system-x86 curl unzip
         qemu-system-x86_64 --version | head -n 1
 
-    - name: Download the firmware artifact of that build
+    # workflow_run gives the triggering run; a manual dispatch names one, or
+    # takes the newest successful build. The build job's own conclusion decides
+    # whether there is anything to boot - the run's conclusion does not, because
+    # a failed release step turns the whole run red with the image still there.
+    - name: Resolve the build run
+      id: run
       env:
         GH_TOKEN: ${{ github.token }}
-        # workflow_run gives the triggering run; a manual dispatch names one, or
-        # takes the newest successful build.
-        RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+        GH_REPO: ${{ github.repository }}
+        GIVEN_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
       run: |
         set -euo pipefail
-        if [ -z "$RUN_ID" ]; then
-          RUN_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build-openwrt.yml/runs?status=success&per_page=1" \
+        run_id=${GIVEN_RUN_ID:-}
+        if [ -z "$run_id" ]; then
+          run_id=$(gh api "repos/$GH_REPO/actions/workflows/build-openwrt.yml/runs?status=success&per_page=1" \
             --jq '.workflow_runs[0].id')
-          echo "no run id given; using the newest successful build: $RUN_ID"
+          echo "no run id given; using the newest successful build: $run_id"
         fi
+        build=$(gh api "repos/$GH_REPO/actions/runs/$run_id/jobs" \
+          --jq '[.jobs[] | select(.name == "build")][0].conclusion // "missing"')
+        if [ "$build" != 'success' ]; then
+          echo "::notice::run $run_id has no firmware (build job: $build); nothing to boot"
+          echo "test=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "test=true" >> "$GITHUB_OUTPUT"
+        echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+    - name: Download the firmware artifact of that build
+      if: steps.run.outputs.test == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RUN_ID: ${{ steps.run.outputs.run_id }}
+      run: |
+        set -euo pipefail
         artifact_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" \
           --jq '[.artifacts[] | select(.name | startswith("OpenWrt_firmware"))] | sort_by(.created_at) | last | .id // empty')
         if [ -z "$artifact_id" ]; then
@@ -77,6 +102,7 @@ jobs:
         ls -la firmware
 
     - name: Boot it and wait for LuCI
+      if: steps.run.outputs.test == 'true'
       env:
         # QEMU without KVM on a hosted runner: give the guest time to come up.
         QEMU_TIMEOUT: '900'
@@ -88,7 +114,7 @@ jobs:
         scripts/qemu-smoke.sh "$dir" --timeout "$QEMU_TIMEOUT"
 
     - name: Keep the serial log
-      if: always()
+      if: always() && steps.run.outputs.test == 'true'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: qemu-serial-log
