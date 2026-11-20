@@ -402,9 +402,10 @@ tagged `OpenWrt_openwrt-25.12_<YYYYMMDDHHMM>`. Both names are built in
 `TZ: Asia/Shanghai`, so the stamp is Shanghai local time). The release assets are
 the exact contents of `openwrt/bin/targets/x86/64/` (the `packages/` subdirectory
 is removed) plus `SOURCES.txt`; the release notes carry the
-`git log --since=24.hour` of `openwrt` and of the feeds `packages`, `luci`,
-`routing` and `telephony`, followed by a `## Source` section pointing at the
-branch and the `.diffconfig` commit.
+`git log --since=24.hour` of `openwrt` and of every feed the run cloned
+(`feeds/*/.git`: `packages`, `luci`, `routing`, `telephony`, `video` and the two
+Passwall feeds), followed by a `## Source` section pointing at the branch and
+the `.diffconfig` commit.
 
 Four extra files are generated before the upload, so they are in both the
 artefact and the release:
@@ -513,14 +514,19 @@ Two triggers, both on the built-in token:
   Pushing to `main` starts nothing.
 - **`Update Checker`** (`.github/workflows/update-checker.yml`) runs on
   `workflow_dispatch` and on the **1st and 15th** of every month at 00:00 UTC
-  (the old "30th" schedule silently skipped February). It clones
-  `openwrt/{openwrt,packages,luci,routing,telephony}` at `openwrt-25.12` and
-  compares the five HEAD hashes with the `HEAD-…` cache key:
-  - **cache hit** — that exact combination was already seen, so nothing moved;
+  (the old "30th" schedule silently skipped February). It clones **all eight
+  sources the build uses** — `openwrt/openwrt` and the official feeds
+  `packages`, `luci`, `routing`, `telephony`, `video` at `openwrt-25.12`, plus
+  `Openwrt-Passwall/openwrt-passwall-packages` and
+  `Openwrt-Passwall/openwrt-passwall` at `main` — writes `name<TAB>full-sha`
+  per source and compares that with the `SOURCES.txt` of the newest release:
+  - **cache hit** — the `HEAD-<sha256 of all eight heads>` key was already seen,
+    so nothing moved;
   - **cache miss** — the marker may simply have been evicted, so the commits are
     compared with the `SOURCES.txt` of the newest release (what the last build
-    actually compiled). A build is dispatched only if one of the five really
-    differs; with no release yet, it builds once.
+    actually compiled). A build is dispatched only if one of the eight really
+    differs, or if a source the build uses is missing from that `SOURCES.txt`
+    and therefore cannot be shown unchanged; with no release yet, it builds once.
 
 `Update Checker` dispatches with `${{ github.token }}` (`contents: write`, scoped
 to the `dispatch` job), which works because GitHub's "events triggered by

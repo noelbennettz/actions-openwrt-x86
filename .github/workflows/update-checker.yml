@@ -29,11 +29,9 @@ on:
 
 env:
   # Must match REPO_BRANCH in build-openwrt.yml: the Go toolchain of 25.12 is
-  # required by the current passwall packages (see the README).
+  # required by the current passwall packages (see the README), and every
+  # official feed below is cloned at this same branch.
   REPO_BRANCH: openwrt-25.12
-  # Feeds whose upstream commits are watched; the order defines SHA_01 .. 05
-  # and the names are exactly the ones SOURCES.txt uses.
-  REPOS: openwrt packages luci routing telephony
 
 permissions:
   contents: read
@@ -47,31 +45,51 @@ jobs:
       changed: ${{ steps.decide.outputs.changed }}
     steps:
 
+    # Every source the build actually clones, as a name|url|branch table: the
+    # official openwrt tree, every official feed of feeds.conf.default
+    # (packages / luci / routing / telephony / video, all at REPO_BRANCH) and
+    # the two Passwall feeds that diy-part1.sh prepends at their 'main' branch.
+    # The names are the ones SOURCES.txt uses ('name ref commit url'), because
+    # the comparison below joins on the name column.
     - name: Get Commit Hash
       id: getHash
       run: |
         set -euo pipefail
-        i=0
-        for repo in $REPOS; do
-          i=$((i + 1))
-          git clone --filter=blob:none --depth=1 -b "$REPO_BRANCH" \
-            "https://github.com/openwrt/$repo" "$repo"
-          printf 'SHA_%02d=%s\n' "$i" "$(git -C "$repo" rev-parse --short HEAD)" \
-            >> "$GITHUB_OUTPUT"
-        done
+        table="$RUNNER_TEMP/sources.table"
+        {
+          printf 'openwrt|https://github.com/openwrt/openwrt|%s\n' "$REPO_BRANCH"
+          for feed in packages luci routing telephony video; do
+            printf '%s|https://github.com/openwrt/%s|%s\n' \
+              "$feed" "$feed" "$REPO_BRANCH"
+          done
+          printf 'passwall_packages|%s|main\n' \
+            'https://github.com/Openwrt-Passwall/openwrt-passwall-packages'
+          printf 'passwall_luci|%s|main\n' \
+            'https://github.com/Openwrt-Passwall/openwrt-passwall'
+        } > "$table"
+
+        # name<TAB>full sha, one line per source. Full SHAs, so the comparison
+        # with SOURCES.txt (which records full SHAs) needs no prefix guessing.
+        : > .commitHash_All
+        while IFS='|' read -r name url branch; do
+          [ -n "$name" ] || continue
+          # Depth 1 and no blobs: only the head commit of that branch is needed.
+          git clone --filter=blob:none --depth=1 -b "$branch" "$url" "$name"
+          sha=$(git -C "$name" rev-parse HEAD)
+          printf '%s\t%s\n' "$name" "$sha" >> .commitHash_All
+          printf '%-18s %s (%s@%s)\n' "$name" "$sha" "$url" "$branch"
+        done < "$table"
+        cat .commitHash_All
 
     - name: Show Commit Head and Combination Heads
       id: combHeader
       run: |
-        # One line, so it is a valid action output *and* a valid cache key. A
-        # multi-line value would silently collapse the key and freeze the
-        # checker after the first cache save.
-        printf 'commitHash_All=%s-%s-%s-%s-%s\n' \
-          '${{ steps.getHash.outputs.SHA_01 }}' \
-          '${{ steps.getHash.outputs.SHA_02 }}' \
-          '${{ steps.getHash.outputs.SHA_03 }}' \
-          '${{ steps.getHash.outputs.SHA_04 }}' \
-          '${{ steps.getHash.outputs.SHA_05 }}' >> "$GITHUB_OUTPUT"
+        # sha256 over the whole head file: one line, so it is a valid action
+        # output *and* a valid cache key, and *every* one of the eight heads
+        # contributes to the key. A multi-line value would silently collapse the
+        # key and freeze the checker after the first cache save.
+        key=$(sha256sum .commitHash_All | awk '{ print $1 }')
+        printf 'commitHash_All=%s\n' "$key" >> "$GITHUB_OUTPUT"
 
     - name: Compare Commit Hash
       id: cacheHash
@@ -95,7 +113,10 @@ jobs:
         HEADS: ${{ steps.combHeader.outputs.commitHash_All }}
       run: |
         set -euo pipefail
-        printf '%s\n' "$HEADS" > .commitHash_All
+        # .commitHash_All ('name<TAB>full sha'), written by 'Get Commit Hash',
+        # is both the cache file and the list the comparison walks.
+        HEADS=$(awk -F'\t' '{ printf "%s=%s ", $1, substr($2, 1, 12) }' .commitHash_All)
+        echo "heads: $HEADS"
 
         if [ "$CACHE_HIT" = 'true' ]; then
           echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -119,29 +140,25 @@ jobs:
           exit 0
         fi
 
-        i=0
         changed=false
-        for name in $REPOS; do
-          i=$((i + 1))
-          case "$i" in
-            1) sha='${{ steps.getHash.outputs.SHA_01 }}' ;;
-            2) sha='${{ steps.getHash.outputs.SHA_02 }}' ;;
-            3) sha='${{ steps.getHash.outputs.SHA_03 }}' ;;
-            4) sha='${{ steps.getHash.outputs.SHA_04 }}' ;;
-            5) sha='${{ steps.getHash.outputs.SHA_05 }}' ;;
-            *) continue ;;
-          esac
+        while IFS=$'\t' read -r name sha; do
+          [ -n "$name" ] || continue
           # SOURCES.txt: 'name ref commit url'
           recorded=$(awk -v n="$name" '$1 == n { print $3 }' "$RUNNER_TEMP/SOURCES.txt")
           if [ -z "$recorded" ]; then
-            echo "::warning::$name is not in $tag's SOURCES.txt"
+            # A source the release does not record cannot be shown unchanged.
+            # Build, so the next SOURCES.txt covers it (this settles after one
+            # run: the names come straight from feeds.conf.default, which is
+            # what 'Record source revisions' walks).
+            echo "::warning::$name is not in $tag's SOURCES.txt - cannot verify it; build"
+            changed=true
             continue
           fi
-          if [ "${recorded:0:${#sha}}" != "$sha" ]; then
-            echo "$name moved: ${recorded:0:${#sha}} -> $sha (released as $tag)"
+          if [ "$recorded" != "$sha" ]; then
+            echo "$name moved: $recorded -> $sha (released as $tag)"
             changed=true
           fi
-        done
+        done < .commitHash_All
 
         echo "changed=$changed" >> "$GITHUB_OUTPUT"
         if [ "$changed" = 'false' ]; then

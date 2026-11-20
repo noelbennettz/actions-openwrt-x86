@@ -483,8 +483,12 @@ jobs:
           if [ -n "$out" ]; then printf '%s\n\n' "$out" >> release.txt; fi
         }
         add_log git log --pretty=format:"%s(#By %an)" --graph --since=24.hour
-        for feed in packages luci routing telephony; do
-          add_log git -C "feeds/$feed" log --pretty=format:"%s(#By %an)" \
+        # Walk every feed the build actually cloned instead of a hard-coded
+        # list: video and the two Passwall feeds used to be missing here, so
+        # their changes never showed up in the release notes.
+        for d in feeds/*/; do
+          [ -d "${d}.git" ] || continue
+          add_log git -C "$d" log --pretty=format:"%s(#By %an)" \
             --graph --since=24.hour
         done
 
