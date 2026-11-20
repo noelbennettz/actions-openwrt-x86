@@ -48,6 +48,26 @@ env:
   TZ: Asia/Shanghai
 
 jobs:
+  # The same run cleanup at the start and at the end of every workflow: keep the
+  # three newest runs of *this* workflow, delete the rest. Built-in token only -
+  # no PAT, no secret and no cache key is referenced. 'actions: write' is what
+  # deleting a run needs; a pull request from a fork gets a read-only token, in
+  # which case scripts/prune-runs.sh only warns and the job stays green.
+  prune-runs-before:
+    name: Keep the three newest runs (before)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Keep the newest three runs of this workflow
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bash scripts/prune-runs.sh 3
+
   build:
     runs-on: ubuntu-24.04
     # The build itself only reads the repository. Writing to it happens in the
@@ -683,9 +703,6 @@ jobs:
           gh cache delete "$id" -R "$REPO" || true
         done
 
-    - name: Delete every run but the three newest
-      run: bash main-repo/scripts/prune-runs.sh 3
-
     - name: Delete artifacts older than 30 days
       run: bash main-repo/scripts/prune-artifacts.sh 30
 
@@ -702,3 +719,23 @@ jobs:
           fi
           i=$((i + 1))
         done < <(gh api "repos/${REPO}/releases" --paginate --jq '.[] | .tag_name')
+
+  # The end of the run: 'always()' keeps this the last job in every outcome
+  # (failed build, cancelled release, everything), so the three-newest rule is
+  # enforced on the way out too, not only when the build succeeded.
+  prune-runs-after:
+    name: Keep the three newest runs (after)
+    needs: [ build, release, prune ]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Keep the newest three runs of this workflow
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bash scripts/prune-runs.sh 3

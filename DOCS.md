@@ -556,10 +556,17 @@ ccache/staging tree kept by `klever1988/cachewrtbuild`.
 | --- | --- | --- |
 | `build` | `contents: read`, `id-token: write`, `attestations: write` | compiles and attests the images; it cannot create, delete or overwrite anything in the repository |
 | `release` | `contents: write` | the only job that creates the release |
-| `prune` | `actions: write`, `contents: write` | deletes caches, runs, artifacts and old releases |
+| `prune` | `actions: write`, `contents: write` | deletes caches, artifacts and old releases |
+
+| `prune-runs-before` / `prune-runs-after` | `actions: write`, `contents: read` | keep the three newest runs of this workflow, at the start and again at the end of every run |
 
 `Update Checker` is split the same way (`check` → `read`, `dispatch` →
 `contents: write`, `housekeeping` → `actions: write` + `contents: write`).
+`Validate` and `QEMU boot smoke test` grant `actions: write` only to their
+`prune-runs-before` / `prune-runs-after` jobs. Every one of those jobs uses
+nothing but `${{ github.token }}` — no PAT, no secret, no cache key — so a fresh
+fork runs them unchanged; on a pull request from a fork the token is read-only,
+in which case `scripts/prune-runs.sh` warns instead of failing.
 
 ## Retention (caches, runs, artifacts, releases)
 
@@ -569,14 +576,15 @@ Policies, all enforced automatically and all deliberate:
 | --- | --- | --- |
 | ccache caches (`cache-openwrt*`) | all but the newest deleted after every successful build | `prune` job |
 | `openwrt-dl-*` caches | only the one for the current `.diffconfig` hash is kept | `prune` job |
-| workflow runs | newest three per workflow | `scripts/prune-runs.sh 3` |
+| workflow runs | newest three per workflow, enforced at the start **and** at the end of every workflow | `prune-runs-before` / `prune-runs-after` jobs, `scripts/prune-runs.sh 3` |
 | artifacts | deleted after 30 days, plus every artifact of a deleted run | `scripts/prune-artifacts.sh 30` |
 | releases | newest five kept by the build; the checker also drops anything older than 60 days with fewer than two downloads | `prune` job, `Update Checker` housekeeping |
 
 Deleting a run also deletes its logs and artifacts, which is why the run count
 is the main lever; deleting a run does **not** touch the release itself. A failed
-build never prunes: the caches of the last successful build are what make the
-next attempt cheap.
+build still trims the run list — `prune-runs-after` has `always()` — but the
+caches and artifacts are only pruned after a successful build, because the caches
+of the last successful build are what make the next attempt cheap.
 
 
 ### Reproducing a published release

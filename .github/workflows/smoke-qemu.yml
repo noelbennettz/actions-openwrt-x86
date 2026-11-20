@@ -30,6 +30,24 @@ permissions:
   actions: read
 
 jobs:
+  # Keep the three newest runs of this workflow, at the start and at the end of
+  # every run - a smoke test runs on every build, so its run list would grow
+  # fastest. Built-in token only: no PAT, no secret, no cache key.
+  prune-runs-before:
+    name: Keep the three newest runs (before)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Keep the newest three runs of this workflow
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bash scripts/prune-runs.sh 3
+
   boot:
     name: Boot the image and probe LuCI
     runs-on: ubuntu-24.04
@@ -121,3 +139,22 @@ jobs:
         path: |
           firmware/**/qemu-serial.log
         if-no-files-found: warn
+
+  # The end of the run, whatever the boot test decided: a failed smoke test must
+  # still leave the run list trimmed.
+  prune-runs-after:
+    name: Keep the three newest runs (after)
+    needs: [ boot ]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Keep the newest three runs of this workflow
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bash scripts/prune-runs.sh 3

@@ -47,6 +47,25 @@ env:
   OPENWRT_BRANCH: openwrt-25.12
 
 jobs:
+  # Keep the three newest runs of this workflow, at the start and at the end of
+  # every run. Built-in token only: no PAT, no secret, no cache key. A pull
+  # request from a fork gets a read-only token, and scripts/prune-runs.sh then
+  # only warns instead of failing the check.
+  prune-runs-before:
+    name: Keep the three newest runs (before)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Keep the newest three runs of this workflow
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bash scripts/prune-runs.sh 3
+
   lint:
     name: Workflow and shell lint
     runs-on: ubuntu-24.04
@@ -203,3 +222,22 @@ jobs:
 
     - name: Every requested symbol survived
       run: scripts/check-defconfig.sh openwrt/.config .diffconfig
+
+  # The end of the run: 'always()' runs this after the checks whatever their
+  # outcome, so the three-newest rule also holds for a red pull request.
+  prune-runs-after:
+    name: Keep the three newest runs (after)
+    needs: [ lint, config, config-dry ]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Keep the newest three runs of this workflow
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bash scripts/prune-runs.sh 3
