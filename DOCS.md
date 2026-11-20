@@ -439,6 +439,35 @@ token as well. `Update Checker` prunes more aggressively: five newest releases a
 kept, the rest goes once it is older than 60 days or has fewer than two
 downloads.
 
+### Reproducing a published release
+
+Every run resolves the source revisions *before* it clones anything and then
+checks out exactly those commits, so a rerun cannot drift to a newer branch head:
+
+1. `Resolve the source revision` pins the commit of `openwrt/openwrt` (the head
+   of `openwrt-25.12`, or the `source_commit` input when one is given) and
+   `Clone source code` checks it out detached and verifies `HEAD`.
+2. `Update feeds` clones the seven feeds; `Pin feeds to the requested revisions`
+   checks each one out at the `feed_commit` SHA when that input is set.
+3. `Record source revisions` writes `SOURCES.txt` — `name ref commit url` per
+   repository, plus the `build-config` line of this repository — and fails the
+   build if any recorded commit differs from the checked-out tree.
+4. `REPRODUCE.txt` carries the same revisions as the two workflow inputs and is
+   attached to the release next to `SOURCES.txt`.
+
+To rebuild an existing release, take the `openwrt` line of its `SOURCES.txt`
+for `source_commit`, and its feed lines as `name=sha` pairs for `feed_commit`:
+
+```
+source_commit=2ad8f1c…            (from the 'openwrt' line, third column)
+feed_commit=packages=5f3a… luci=9c1… routing=… telephony=… video=… \
+            passwall_packages=… passwall_luci=…
+```
+
+The same values are in `REPRODUCE.txt`, ready to paste. The image is still not
+bit-identical to the original — ccache hits, the `dl/` mirror state and the
+timestamps inside the archive can differ — but it is built from the same source.
+
 ### Building locally instead of on Actions
 
 ```sh
