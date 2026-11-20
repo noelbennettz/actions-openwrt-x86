@@ -19,6 +19,7 @@ the short [README](README.md) lives here.
 - [LuCI themes](#luci-themes)
 - [Artefacts and flashing](#artefacts-and-flashing)
 - [Updating and rebuilding](#updating-and-rebuilding)
+- [Retention (caches, runs, artifacts, releases)](#retention-caches-runs-artifacts-releases)
 - [Repository layout](#repository-layout)
 - [FAQ](#faq)
 - [Credits](#credits)
@@ -479,31 +480,62 @@ manifest instead.
 Two triggers, both on the built-in token:
 
 - **`Build OpenWrt`** (`.github/workflows/build-openwrt.yml`, `workflow_dispatch`
-  plus `repository_dispatch`) builds on demand; a manual run also accepts an `ssh`
-  input (`required: false`, `default: 'false'`; `true` opens a tmate session via
-  `P3TERX/ssh2actions@v1.0.0`). Pushing to `main` starts nothing.
+  plus `repository_dispatch`) builds on demand, with optional `source_commit` and
+  `feed_commit` pins. There is no interactive-session input: the former tmate
+  path (`P3TERX/ssh2actions`) handed anyone who could read the run log a shell
+  with the job token, and gating it properly needs a deployment environment with
+  required reviewers, which is a repository setting — so it was removed instead.
+  Pushing to `main` starts nothing.
 - **`Update Checker`** (`.github/workflows/update-checker.yml`) runs on
-  `workflow_dispatch` and monthly, on the 30th at 00:00 UTC (GitHub cron is UTC;
-  February has no 30th, so that month is skipped). It clones
+  `workflow_dispatch` and on the **1st and 15th** of every month at 00:00 UTC
+  (the old "30th" schedule silently skipped February). It clones
   `openwrt/{openwrt,packages,luci,routing,telephony}` at `openwrt-25.12` and
-  compares the five HEAD hashes with the previous run through the `HEAD-…` cache
-  key. If anything moved it dispatches `openwrt_source_update`; if not, the run
-  ends after the check.
+  compares the five HEAD hashes with the `HEAD-…` cache key:
+  - **cache hit** — that exact combination was already seen, so nothing moved;
+  - **cache miss** — the marker may simply have been evicted, so the commits are
+    compared with the `SOURCES.txt` of the newest release (what the last build
+    actually compiled). A build is dispatched only if one of the five really
+    differs; with no release yet, it builds once.
 
-`Update Checker` dispatches with `${{ github.token }}` (`contents: write`), which
-works because GitHub's "events triggered by `GITHUB_TOKEN` do not create new
-workflow runs" rule does **not** apply to `repository_dispatch` and
-`workflow_dispatch`. No PAT, no secret, nothing to rotate — a fork is ready as
-it is. The build job runs on `ubuntu-24.04` and reuses two caches: `openwrt/dl`
-(key `openwrt-dl-<hash of .diffconfig>`) and the ccache/staging tree kept by
-`klever1988/cachewrtbuild`.
+`Update Checker` dispatches with `${{ github.token }}` (`contents: write`, scoped
+to the `dispatch` job), which works because GitHub's "events triggered by
+`GITHUB_TOKEN` do not create new workflow runs" rule does **not** apply to
+`repository_dispatch` and `workflow_dispatch`. No PAT, no secret, nothing to
+rotate — a fork is ready as it is. The build job runs on `ubuntu-24.04` and
+reuses two caches: `openwrt/dl` (key `openwrt-dl-<hash of .diffconfig>`) and the
+ccache/staging tree kept by `klever1988/cachewrtbuild`.
 
-Housekeeping runs at the end of a build: all `cache-openwrt*` (ccache) caches, the
-`openwrt-dl-*` caches of older configurations, runs older than one day (at least
-five kept) and all but the ten newest releases are deleted, with the built-in
-token as well. `Update Checker` prunes more aggressively: five newest releases are
-kept, the rest goes once it is older than 60 days or has fewer than two
-downloads.
+### Permissions
+
+`Build OpenWrt` is split into three jobs so that writing is scoped:
+
+| Job | Permissions | Why |
+| --- | --- | --- |
+| `build` | `contents: read`, `id-token: write`, `attestations: write` | compiles and attests the images; it cannot create, delete or overwrite anything in the repository |
+| `release` | `contents: write` | the only job that creates the release |
+| `prune` | `actions: write`, `contents: write` | deletes caches, runs, artifacts and old releases |
+
+`Update Checker` is split the same way (`check` → `read`, `dispatch` →
+`contents: write`, `housekeeping` → `actions: write` + `contents: write`).
+
+## Retention (caches, runs, artifacts, releases)
+
+Policies, all enforced automatically and all deliberate:
+
+| Object | Policy | Enforced by |
+| --- | --- | --- |
+| ccache caches (`cache-openwrt*`) | deleted after every successful build | `prune` job |
+| `openwrt-dl-*` caches | only the one for the current `.diffconfig` hash is kept | `prune` job |
+| `HEAD-*` caches (update checker) | newest three kept | both workflows' prune steps |
+| workflow runs | newest three per workflow | `scripts/prune-runs.sh 3` |
+| artifacts | deleted after 30 days, plus every artifact of a deleted run | `scripts/prune-artifacts.sh 30` |
+| releases | newest five kept by the build; the checker also drops anything older than 60 days with fewer than two downloads | `prune` job, `Update Checker` housekeeping |
+
+Deleting a run also deletes its logs and artifacts, which is why the run count
+is the main lever; deleting a run does **not** touch the release itself. A failed
+build never prunes: the caches of the last successful build are what make the
+next attempt cheap.
+
 
 ### Reproducing a published release
 
@@ -592,6 +624,7 @@ hides exactly the prompt that breaks CI.
 | `scripts/validate-diffconfig.sh` | Static check of `.diffconfig` (syntax, duplicates, kmod names vs upstream) |
 | `scripts/check-defconfig.sh` | Verifies every requested symbol survived `make defconfig` |
 | `scripts/prune-runs.sh` | Keeps the newest N runs of the running workflow |
+| `scripts/prune-artifacts.sh` | Deletes artifacts older than N days |
 | `scripts/qemu-smoke.sh` | Boots a built image in QEMU and probes LuCI from the host |
 | `.editorconfig` | Editor defaults (UTF-8, LF, final newline) |
 | `README.md` | Short overview: requirements, use, documentation index, licence |

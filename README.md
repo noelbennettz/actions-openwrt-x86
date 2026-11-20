@@ -37,7 +37,7 @@ instead needs a Linux host with the OpenWrt build dependencies (`gawk`, `flex`,
 ## Use
 
 Trigger **Actions → Build OpenWrt → Run workflow**, leave `source_commit` and
-`feed_commit` empty, leave the `ssh` input at `false`, and wait about two hours.
+`feed_commit` empty, and wait about two hours.
 The result appears as the artefact `OpenWrt_firmware_generic_<YYYYMMDDHHMM>` in
 the run and as a release tagged `OpenWrt_openwrt-25.12_<YYYYMMDDHHMM>` under
 **Releases**. To rebuild a release from exactly the same sources, paste the two
@@ -66,7 +66,7 @@ plain writable root without that reset path. On first boot the box answers at
 | [.diffconfig](.diffconfig) | The complete build configuration |
 | [`.github/workflows/build-openwrt.yml`](.github/workflows/build-openwrt.yml) | The build: checkout, feeds, compile, upload, housekeeping |
 | [`.github/workflows/validate.yml`](.github/workflows/validate.yml) | Pull-request checks: lint, `.diffconfig` validation, `make defconfig` dry run (no compile) |
-| [`.github/workflows/update-checker.yml`](.github/workflows/update-checker.yml) | Monthly upstream check that dispatches a build |
+| [`.github/workflows/update-checker.yml`](.github/workflows/update-checker.yml) | Twice-monthly upstream check that dispatches a build |
 | [`.github/workflows/smoke-qemu.yml`](.github/workflows/smoke-qemu.yml) | Boots a published image in QEMU and checks that LuCI answers |
 
 ## Licence
