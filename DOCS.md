@@ -490,9 +490,13 @@ hides exactly the prompt that breaks CI.
 | `diy-part1.sh` | Hook before `feeds update`: adds the two Passwall feeds |
 | `diy-part2.sh` | Hook after `feeds install`: serial console fix, removes unusable protocol UI modules |
 | `files/` | Files copied into the image (`etc/uci-defaults/50-luci-theme` theme default, `etc/sysctl.d/20-ipv6-accept-ra.conf` IPv6 sysctl) |
+| `.github/workflows/validate.yml` | Pull-request validation: lint, config check, `make defconfig` dry run (no compile) |
 | `.github/workflows/build-openwrt.yml` | Main build: source, feeds, compile, release upload, housekeeping |
 | `.github/workflows/update-checker.yml` | Monthly upstream check, dispatch, release pruning |
 | `.github/dependabot.yml` | Weekly PRs that move the pinned action SHAs to the next release |
+| `scripts/validate-diffconfig.sh` | Static check of `.diffconfig` (syntax, duplicates, kmod names vs upstream) |
+| `scripts/check-defconfig.sh` | Verifies every requested symbol survived `make defconfig` |
+| `scripts/prune-runs.sh` | Keeps the newest N runs of the running workflow |
 | `.editorconfig` | Editor defaults (UTF-8, LF, final newline) |
 | `README.md` | Short overview: requirements, use, documentation index, licence |
 | `DOCS.md` | This file |
@@ -504,6 +508,22 @@ with its release tag in a trailing comment, so a run executes exactly the code
 that was reviewed — a moved or re-pointed tag cannot change what runs.
 `.github/dependabot.yml` opens a weekly PR that rewrites both the SHA and the
 comment; `klever1988/cachewrtbuild` publishes no tags and is bumped by hand.
+
+### What a pull request runs
+
+`.github/workflows/validate.yml` runs on every pull request (and on `main`, and
+weekly) and takes minutes, not hours:
+
+| Job | Checks |
+| --- | --- |
+| `lint` | `actionlint` on the workflows (it runs `shellcheck` on every `run:` block), `shellcheck` on `scripts/*.sh` and the hooks, every YAML parses, every action is pinned to a 40-character SHA, `git diff --check` plus a conflict-marker scan |
+| `config` | `.diffconfig` syntax and duplicate symbols, the target/device selection, the Passwall feed lines in `diy-part1.sh`, and every `kmod-*` package against the `KernelPackage/…` definitions of the pinned `openwrt-25.12` tree |
+| `config-dry` | clone OpenWrt, add the feeds, `feeds update -a`, `feeds install -a`, `diy-part2.sh`, `make defconfig`, then `scripts/check-defconfig.sh` — every symbol `.diffconfig` asks for has to survive |
+
+Nothing in that workflow compiles a package, publishes an artefact or touches a
+release; it runs with `contents: read`. The firmware build stays manual
+(**Actions → Build OpenWrt**) and is additionally dispatched by the update
+checker when upstream moves.
 
 ## FAQ
 

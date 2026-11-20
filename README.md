@@ -61,6 +61,7 @@ plain writable root without that reset path. On first boot the box answers at
 | [SOURCE.md](SOURCE.md) | Where the source of a published image is (GPL-2.0 offer, `SOURCES.txt`) |
 | [.diffconfig](.diffconfig) | The complete build configuration |
 | [`.github/workflows/build-openwrt.yml`](.github/workflows/build-openwrt.yml) | The build: checkout, feeds, compile, upload, housekeeping |
+| [`.github/workflows/validate.yml`](.github/workflows/validate.yml) | Pull-request checks: lint, `.diffconfig` validation, `make defconfig` dry run (no compile) |
 | [`.github/workflows/update-checker.yml`](.github/workflows/update-checker.yml) | Monthly upstream check that dispatches a build |
 
 ## Licence
