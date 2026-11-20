@@ -11,33 +11,40 @@
 # Third-party actions are pinned by full commit SHA (tag in the trailing
 # comment); see the note at the top of build-openwrt.yml.
 #
+# Three jobs, so writing is scoped to the ones that need it:
+#   check         reads upstream commit ids (contents: read, cache)
+#   dispatch      asks for a build (contents: write, only when something moved)
+#   housekeeping  prunes runs and releases (actions: write, contents: write)
+#
 
 name: Update Checker
 
 on:
   workflow_dispatch:
   schedule:
-    # Monthly: the 30th at 00:00 UTC (GitHub cron is always UTC).
-    # Note: February has no 30th, so no scheduled run happens that month.
-    - cron: '0 0 30 * *'
+    # Twice a month, on the 1st and the 15th at 00:00 UTC (GitHub cron is
+    # always UTC). The old '30th of the month' schedule silently skipped
+    # February, because that day does not exist there.
+    - cron: '0 0 1,15 * *'
 
 env:
   # Must match REPO_BRANCH in build-openwrt.yml: the Go toolchain of 25.12 is
   # required by the current passwall packages (see the README).
   REPO_BRANCH: openwrt-25.12
-  # Feeds whose upstream commits are watched; order defines SHA_01 .. SHA_05.
+  # Feeds whose upstream commits are watched; the order defines SHA_01 .. 05
+  # and the names are exactly the ones SOURCES.txt uses.
   REPOS: openwrt packages luci routing telephony
+
+permissions:
+  contents: read
 
 jobs:
   check:
-    runs-on: ubuntu-latest
-    permissions:
-      # Mattraks/delete-workflow-runs deletes runs with the default token
-      actions: write
-      # release pruning (delete release + tag) and repository_dispatch both need
-      # contents: write; the built-in GITHUB_TOKEN is enough, no PAT required.
-      contents: write
-
+    name: Compare upstream commits
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      changed: ${{ steps.decide.outputs.changed }}
     steps:
 
     - name: Get Commit Hash
@@ -73,27 +80,120 @@ jobs:
         path: .commitHash_All
         key: HEAD-${{ steps.combHeader.outputs.commitHash_All }}
 
-    - name: Save New Commit Hash
-      if: steps.cacheHash.outputs.cache-hit != 'true'
-      run: |
-        printf '%s\n' '${{ steps.combHeader.outputs.commitHash_All }}' > .commitHash_All
-
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@b3018382ca039b53d238908238bd35d1fb14f8ee # v2.1.0
-      with:
-        token: ${{ github.token }}
-        repository: ${{ github.repository }}
-        retain_days: 1
-        keep_minimum_runs: 3
-
-    - name: Remove old Releases
+    # A cache hit means this exact combination was already seen, so nothing can
+    # have moved. A *miss* means nothing of the sort: caches are evicted after
+    # seven days without a hit, and the repository may never have run this
+    # workflow at all. In that case the upstream commits are compared with the
+    # SOURCES.txt of the newest release - i.e. with what the last build actually
+    # compiled - and a build is only dispatched when something really differs.
+    - name: Decide whether anything moved
+      id: decide
       env:
         GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        CACHE_HIT: ${{ steps.cacheHash.outputs.cache-hit }}
+        HEADS: ${{ steps.combHeader.outputs.commitHash_All }}
       run: |
         set -euo pipefail
-        # Same policy as dev-drprasad/delete-older-releases: ignore drafts; keep the newest KEEP
-        # releases, then delete (including tags) releases older than MAX_DAYS days or with fewer
-        # than KEEP_MIN downloads, when both KEEP_MIN and MAX_DAYS are non-zero.
+        printf '%s\n' "$HEADS" > .commitHash_All
+
+        if [ "$CACHE_HIT" = 'true' ]; then
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          echo "cache hit ($HEADS): upstream has not moved since the last check"
+          exit 0
+        fi
+
+        echo "cache miss for $HEADS - comparing with the newest release instead"
+
+        tag=$(gh api "repos/$GH_REPO/releases?per_page=1" --jq '.[0].tag_name // empty' || true)
+        if [ -z "$tag" ]; then
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "no release exists yet, so there is nothing to compare against: build once"
+          exit 0
+        fi
+
+        if ! gh release download "$tag" -R "$GH_REPO" -p SOURCES.txt \
+               -O "$RUNNER_TEMP/SOURCES.txt" --clobber; then
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "release $tag has no SOURCES.txt to compare with: build"
+          exit 0
+        fi
+
+        i=0
+        changed=false
+        for name in $REPOS; do
+          i=$((i + 1))
+          case "$i" in
+            1) sha='${{ steps.getHash.outputs.SHA_01 }}' ;;
+            2) sha='${{ steps.getHash.outputs.SHA_02 }}' ;;
+            3) sha='${{ steps.getHash.outputs.SHA_03 }}' ;;
+            4) sha='${{ steps.getHash.outputs.SHA_04 }}' ;;
+            5) sha='${{ steps.getHash.outputs.SHA_05 }}' ;;
+            *) continue ;;
+          esac
+          # SOURCES.txt: 'name ref commit url'
+          recorded=$(awk -v n="$name" '$1 == n { print $3 }' "$RUNNER_TEMP/SOURCES.txt")
+          if [ -z "$recorded" ]; then
+            echo "::warning::$name is not in $tag's SOURCES.txt"
+            continue
+          fi
+          if [ "${recorded:0:${#sha}}" != "$sha" ]; then
+            echo "$name moved: ${recorded:0:${#sha}} -> $sha (released as $tag)"
+            changed=true
+          fi
+        done
+
+        echo "changed=$changed" >> "$GITHUB_OUTPUT"
+        if [ "$changed" = 'false' ]; then
+          echo "upstream is unchanged since $tag; not dispatching a build"
+        fi
+
+  dispatch:
+    name: Ask for a build
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # repository_dispatch needs contents: write; nothing else in this job writes.
+    permissions:
+      contents: write
+    steps:
+    - name: Trigger build
+      env:
+        # A repository_dispatch sent with GITHUB_TOKEN is one of the two events
+        # (with workflow_dispatch) that still starts a new workflow run, so no
+        # personal access token is needed.
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: gh api --method POST "repos/$GH_REPO/dispatches" -f event-type=openwrt_source_update
+
+  housekeeping:
+    name: Prune runs and releases
+    needs: check
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: write
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    # This repository's own script replaces Mattraks/delete-workflow-runs: one
+    # less third-party action holding a token with actions: write, and the same
+    # policy as the build workflow.
+    - name: Checkout
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+    - name: Delete every run but the three newest
+      run: bash scripts/prune-runs.sh 3
+
+    - name: Remove old Releases
+      run: |
+        set -euo pipefail
+        # Same policy as the build workflow: ignore drafts; keep the newest KEEP
+        # releases, then delete (including tags) releases older than MAX_DAYS
+        # days or with fewer than KEEP_MIN downloads, when both are non-zero.
         REPO="${{ github.repository }}"
         KEEP=5
         KEEP_MIN=2
@@ -123,23 +223,3 @@ jobs:
           | map(select(.dl < $kmin or .days > $md))
           | .[]
         ')
-
-    - name: Trigger build
-      if: steps.cacheHash.outputs.cache-hit != 'true'
-      env:
-        # repository_dispatch sent with GITHUB_TOKEN is one of the two events
-        # (with workflow_dispatch) that still starts a new workflow run, so no
-        # personal access token is needed. The job needs contents: write above.
-        GH_TOKEN: ${{ github.token }}
-        GH_REPO: ${{ github.repository }}
-      run: gh api --method POST "repos/$GH_REPO/dispatches" -f event-type=openwrt_source_update
-
-    # Housekeeping: this workflow runs monthly; one page of history is enough.
-    - name: Checkout
-      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-
-    - name: Delete every run but the three newest
-      if: always()
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: bash scripts/prune-runs.sh 3

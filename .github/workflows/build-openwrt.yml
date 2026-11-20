@@ -19,10 +19,6 @@ on:
   repository_dispatch:
   workflow_dispatch:
     inputs:
-      ssh:
-        description: 'SSH connection to Actions'
-        required: false
-        default: 'false'
       source_commit:
         # Reproducing a release: copy the sha of the 'openwrt' line of its
         # SOURCES.txt. Empty means the head of REPO_BRANCH at build time.
@@ -54,9 +50,18 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    # The build itself only reads the repository. Writing to it happens in the
+    # release and prune jobs below, so a compromised build step cannot create,
+    # delete or overwrite anything.
     permissions:
-      actions: write
-      contents: write
+      contents: read
+      # actions/attest-build-provenance signs with the job's OIDC token and
+      # stores the statement as a repository attestation.
+      id-token: write
+      attestations: write
+    outputs:
+      release_tag: ${{ steps.tag.outputs.release_tag }}
+      dl_cache_key: ${{ steps.dlcache.outputs.key }}
 
     steps:
     - name: Checkout main-repo
@@ -134,7 +139,12 @@ jobs:
     # ---- Build acceleration caches (dl downloads + ccache/staging) ----
     # Pure CI speed-up, not firmware contents, safe to drop.
     - name: Set dl cache key
-      run: echo "DL_CACHE_KEY=openwrt-dl-${{ hashFiles('main-repo/.diffconfig') }}" >> "$GITHUB_ENV"
+      id: dlcache
+      run: |
+        key="openwrt-dl-${{ hashFiles('main-repo/.diffconfig') }}"
+        echo "DL_CACHE_KEY=$key" >> "$GITHUB_ENV"
+        # The prune job needs this to know which dl cache to keep.
+        echo "key=$key" >> "$GITHUB_OUTPUT"
 
     - name: Cache dl
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -217,14 +227,12 @@ jobs:
         chmod +x "../main-repo/$DIY_P2_SH"
         "../main-repo/$DIY_P2_SH"
 
-    # ---- Debug only: workflow_dispatch with ssh=true opens a tmate session ----
-    # Not part of the upstream template, safe to drop.
-    - name: SSH connection to Actions
-      uses: P3TERX/ssh2actions@71006b93bff498b020448ac10964f8a5d0f9f32c # v1.0.0
-      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
-      env:
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    # There is deliberately no interactive-session step here. The former
+    # P3TERX/ssh2actions (tmate) path handed anyone who could start a run - or
+    # read the session URL out of the log - a shell with the job token. It is
+    # gone rather than gated: proper gating would need a deployment environment
+    # with required reviewers, which is a repository setting this workflow
+    # cannot create.
 
     - name: Prepare config
       working-directory: openwrt
@@ -453,41 +461,61 @@ jobs:
           sed 's/^/    /' REPRODUCE.txt
           printf '\n'
         } >> release.txt
+        # Into the firmware directory, so the release job gets the notes with
+        # the artifact instead of regenerating them (it has no OpenWrt tree).
+        cp release.txt "$FIRMWARE/release.txt"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
+  release:
+    name: Publish the release
+    needs: build
+    if: needs.build.outputs.release_tag != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # The only job allowed to write to the repository.
+    permissions:
+      contents: write
+    steps:
+    - name: Download the firmware artifact
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      with:
+        pattern: OpenWrt_firmware*
+        merge-multiple: true
+        path: firmware
+
     - name: Upload firmware to release
-      if: steps.tag.outputs.status == 'success' && steps.organize.outputs.status == 'success' && !cancelled()
       env:
-        # The built-in token is enough: the job already grants contents: write,
-        # so no PAT secret has to exist for the release upload.
+        # The built-in token is enough: this job grants contents: write, so no
+        # PAT has to exist for the release upload.
         GH_TOKEN: ${{ github.token }}
-        # The checkout lives in ./main-repo, so the workspace root is NOT a git
-        # repository and 'gh' cannot infer the target repo from it
-        # ("failed to run git: fatal: not a git repository"). GH_REPO fixes that
-        # without changing the working directory, which would break the
-        # relative path of openwrt/release.txt.
         GH_REPO: ${{ github.repository }}
-        TAG: ${{ steps.tag.outputs.release_tag }}
+        TAG: ${{ needs.build.outputs.release_tag }}
       run: |
         set -uo pipefail
+        FIRMWARE="$PWD/firmware"
+        if [ ! -d "$FIRMWARE" ]; then
+          echo "::error::the firmware artifact was not downloaded into $FIRMWARE"
+          exit 1
+        fi
+        # release.txt rides along with the artifact; it is the notes, not an
+        # asset, so move it out of the directory that gets uploaded.
+        NOTES="$RUNNER_TEMP/release.txt"
+        if [ -f "$FIRMWARE/release.txt" ]; then
+          mv "$FIRMWARE/release.txt" "$NOTES"
+        else
+          printf 'Release %s\n' "$TAG" > "$NOTES"
+        fi
+        ls -la "$FIRMWARE"
+        echo "tag         : $TAG"
+        echo "notes       : $NOTES"
+        gh auth status 2>&1 || true
         # 'gh release create' occasionally dies with transient API errors (the
         # previous action-gh-release attempt failed with "Too many retries."),
         # so retry the whole operation a few times before giving up.
-        # FIRMWARE comes from the 'Organize files' step via $GITHUB_ENV; if that
-        # step did not run, stop here with a readable message instead of five
-        # pointless retries against an empty glob.
-        if [ -z "${FIRMWARE:-}" ] || [ ! -d "$FIRMWARE" ]; then
-          echo "::error::FIRMWARE is '${FIRMWARE:-<unset>}' - the 'Organize files' step did not produce a firmware directory"
-          exit 1
-        fi
-        echo "target dir : $FIRMWARE"
-        echo "tag         : $TAG"
-        ls -la "$FIRMWARE"
-        gh auth status 2>&1 || true
         for i in $(seq 1 5); do
           echo "=== release attempt $i"
           if out=$(gh release create "$TAG" --title "$TAG" \
-                     --notes-file openwrt/release.txt "$FIRMWARE"/* 2>&1); then
+                     --notes-file "$NOTES" "$FIRMWARE"/* 2>&1); then
             echo "release $TAG created"
             echo "$out"
             exit 0
@@ -509,20 +537,33 @@ jobs:
         echo "ERROR: giving up on release upload after 5 attempts" >&2
         exit 1
 
-    # ---- CI housekeeping: prune old caches / runs / releases ----
-    # Nothing to do with firmware contents.
-    # NOTE: this must only run on success. A failed run (e.g. the release upload
-    # after a finished compile) must not throw away the caches written by the last
-    # successful build - the cache only affects build speed, never the artifacts.
+  prune:
+    name: Housekeeping (caches, runs, artifacts, releases)
+    needs: [ build, release ]
+    # Only after a successful build: a failed run must not throw away the
+    # caches the last successful one wrote. A failed *release* still prunes.
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Writing is scoped to this job: cache and run deletion need actions:
+    # write, release deletion needs contents: write.
+    permissions:
+      actions: write
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      DL_CACHE_KEY: ${{ needs.build.outputs.dl_cache_key }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      with:
+        path: main-repo
+
     - name: Prune old Actions caches
-      if: success()
-      env:
-        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
-        # NOTE: .diffconfig has been moved to openwrt/.config, so only the
-        # DL_CACHE_KEY value captured above is usable here.
-        REPO="${{ github.repository }}"
+        REPO="$GITHUB_REPOSITORY"
         DATA=$(gh cache list -R "$REPO" --limit 100 --json id,key,createdAt)
         echo "$DATA" | jq -r '.[] | "\(.createdAt) \(.id) \(.key)"'
 
@@ -540,19 +581,16 @@ jobs:
         done
 
     - name: Delete every run but the three newest
-      if: success()
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: bash main-repo/scripts/prune-runs.sh 3
 
-    - name: Remove old Releases
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Delete artifacts older than 30 days
+      run: bash main-repo/scripts/prune-artifacts.sh 30
+
+    - name: Keep the five newest releases
       run: |
         set -euo pipefail
-        REPO="${{ github.repository }}"
-        KEEP=10
+        REPO="$GITHUB_REPOSITORY"
+        KEEP=5
         i=0
         while IFS= read -r tag; do
           if [ "$i" -ge "$KEEP" ]; then
