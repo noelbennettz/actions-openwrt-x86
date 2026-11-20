@@ -525,14 +525,13 @@ Two triggers, both on the built-in token:
   `packages`, `luci`, `routing`, `telephony`, `video` at `openwrt-25.12`, plus
   `Openwrt-Passwall/openwrt-passwall-packages` and
   `Openwrt-Passwall/openwrt-passwall` at `main` — writes `name<TAB>full-sha`
-  per source and compares that with the `SOURCES.txt` of the newest release:
-  - **cache hit** — the `HEAD-<sha256 of all eight heads>` key was already seen,
-    so nothing moved;
-  - **cache miss** — the marker may simply have been evicted, so the commits are
-    compared with the `SOURCES.txt` of the newest release (what the last build
-    actually compiled). A build is dispatched only if one of the eight really
-    differs, or if a source the build uses is missing from that `SOURCES.txt`
-    and therefore cannot be shown unchanged; with no release yet, it builds once.
+  per source and compares that with the `SOURCES.txt` of the newest release,
+  i.e. with what the last published build actually compiled. A build is
+  dispatched only if one of the eight really differs, or if a source the build
+  uses is missing from that `SOURCES.txt` and therefore cannot be shown
+  unchanged; with no release yet, it builds once. There is no "seen this
+  combination" marker cache any more: it used to skip the comparison, which also
+  skipped the retry of a build whose release failed and wrote no record.
 
 `Update Checker` dispatches with `${{ github.token }}` (`contents: write`, scoped
 to the `dispatch` job), which works because GitHub's "events triggered by
@@ -563,7 +562,6 @@ Policies, all enforced automatically and all deliberate:
 | --- | --- | --- |
 | ccache caches (`cache-openwrt*`) | deleted after every successful build | `prune` job |
 | `openwrt-dl-*` caches | only the one for the current `.diffconfig` hash is kept | `prune` job |
-| `HEAD-*` caches (update checker) | newest three kept | both workflows' prune steps |
 | workflow runs | newest three per workflow | `scripts/prune-runs.sh 3` |
 | artifacts | deleted after 30 days, plus every artifact of a deleted run | `scripts/prune-artifacts.sh 30` |
 | releases | newest five kept by the build; the checker also drops anything older than 60 days with fewer than two downloads | `prune` job, `Update Checker` housekeeping |

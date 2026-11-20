@@ -469,13 +469,12 @@ jobs:
       with:
         subject-path: ${{ env.FIRMWARE }}/*
 
-    - name: Upload firmware directory
-      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
-
+    # Notes are generated *before* the artifact upload, because the release job
+    # has no OpenWrt tree and reads them out of the artifact. It used to run
+    # after this step, so release.txt never made it into the artifact and every
+    # release got the fallback one-liner 'Release <tag>' instead of the update
+    # log and the source offer. SHA256SUMS and the attestation are generated
+    # above, so the notes are not hashed: they are not a release asset.
     - name: Generate release tag
       working-directory: openwrt
       id: tag
@@ -534,6 +533,15 @@ jobs:
         # the artifact instead of regenerating them (it has no OpenWrt tree).
         cp release.txt "$FIRMWARE/release.txt"
         echo "status=success" >> "$GITHUB_OUTPUT"
+
+    - name: Upload firmware directory
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        # Includes release.txt, which the release job moves out of the directory
+        # before uploading the assets.
+        path: ${{ env.FIRMWARE }}
 
   release:
     name: Publish the release
@@ -640,8 +648,6 @@ jobs:
           ( [.[] | select(.key | startswith("cache-openwrt"))] | map(.id) )
           +
           ( [.[] | select((.key | startswith("openwrt-dl-")) and .key != $dl)] | map(.id) )
-          +
-          ( [.[] | select(.key | startswith("HEAD-"))] | sort_by(.createdAt) | reverse | .[2:] | map(.id) )
           | .[]
         ')
         for id in $delete_ids; do

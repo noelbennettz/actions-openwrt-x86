@@ -81,50 +81,24 @@ jobs:
         done < "$table"
         cat .commitHash_All
 
-    - name: Show Commit Head and Combination Heads
-      id: combHeader
-      run: |
-        # sha256 over the whole head file: one line, so it is a valid action
-        # output *and* a valid cache key, and *every* one of the eight heads
-        # contributes to the key. A multi-line value would silently collapse the
-        # key and freeze the checker after the first cache save.
-        key=$(sha256sum .commitHash_All | awk '{ print $1 }')
-        printf 'commitHash_All=%s\n' "$key" >> "$GITHUB_OUTPUT"
-
-    - name: Compare Commit Hash
-      id: cacheHash
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: .commitHash_All
-        key: HEAD-${{ steps.combHeader.outputs.commitHash_All }}
-
-    # A cache hit means this exact combination was already seen, so nothing can
-    # have moved. A *miss* means nothing of the sort: caches are evicted after
-    # seven days without a hit, and the repository may never have run this
-    # workflow at all. In that case the upstream commits are compared with the
-    # SOURCES.txt of the newest release - i.e. with what the last build actually
-    # compiled - and a build is only dispatched when something really differs.
+    # A cache marker used to short-circuit this ("heads already seen -> nothing
+    # moved"). That made a *failed* build unretryable: the release is written by
+    # the build, so no release means no record of those heads, but the marker
+    # said "seen" and the checker never dispatched again until upstream moved.
+    # The comparison below is against the newest release's SOURCES.txt - what the
+    # last published build actually compiled - and a missing release means
+    # "build". One small download, and no state that can get stuck.
     - name: Decide whether anything moved
       id: decide
       env:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
-        CACHE_HIT: ${{ steps.cacheHash.outputs.cache-hit }}
-        HEADS: ${{ steps.combHeader.outputs.commitHash_All }}
       run: |
         set -euo pipefail
-        # .commitHash_All ('name<TAB>full sha'), written by 'Get Commit Hash',
-        # is both the cache file and the list the comparison walks.
+        # .commitHash_All ('name<TAB>full sha'), written by 'Get Commit Hash', is
+        # the list the comparison walks.
         HEADS=$(awk -F'\t' '{ printf "%s=%s ", $1, substr($2, 1, 12) }' .commitHash_All)
         echo "heads: $HEADS"
-
-        if [ "$CACHE_HIT" = 'true' ]; then
-          echo "changed=false" >> "$GITHUB_OUTPUT"
-          echo "cache hit ($HEADS): upstream has not moved since the last check"
-          exit 0
-        fi
-
-        echo "cache miss for $HEADS - comparing with the newest release instead"
 
         tag=$(gh api "repos/$GH_REPO/releases?per_page=1" --jq '.[0].tag_name // empty' || true)
         if [ -z "$tag" ]; then
