@@ -4,8 +4,8 @@
 > `build-config` commit, and the `DOCS.md` at that commit is the documentation
 > the release was built with.
 
-Everything about the image, the build and the repository that does not belong in
-the short [README](README.md) lives here.
+The [README](README.md) is the short version. This file is the reference: what is
+in the image, how it is built, and how the repository is run.
 
 ## Contents
 
@@ -41,10 +41,10 @@ the short [README](README.md) lives here.
 | Firewall | `firewall4` (nftables) plus the full legacy xtables stack for plug-ins |
 | Extras | serial console disabled, `accept_ra=2` for WAN SLAAC, Material as the default theme regardless of package order |
 
-The branch is `openwrt-25.12` and not 24.10 because of Go. The `go.mod` of the Go
-programs in the Passwall feed declares `go 1.25.5` (sing-box 1.14.4) and `go
-1.25.0` (geoview), and `lang/golang/golang-values.mk` on `openwrt-25.12` sets
-`GO_DEFAULT_VERSION:=1.26`. The 24.10 feed ships Go 1.23.12, where the build stops
+The branch is `openwrt-25.12` rather than 24.10 because of Go. The Go programs in
+the Passwall feed need Go 1.25 or newer (sing-box asks for `go 1.25.5`, geoview
+for `go 1.25.0`), and 25.12 is the branch whose toolchain provides it
+(`GO_DEFAULT_VERSION:=1.26`). On 24.10, which ships Go 1.23.12, the build stops
 with `go.mod requires go >= 1.25.5 (running go 1.23.12; GOTOOLCHAIN=local)`.
 
 The image boots on the VGA console only: `diy-part2.sh` strips the serial console
@@ -109,14 +109,12 @@ Notes:
 - **Server/cloud adapters the official feed does not package are not shipped.**
   `enic` (Cisco VIC), `ionic` (AMD Pensando), `idpf` (Intel IPU),
   `libwx`/`ngbe`/`txgbe` (Wangxun), `nfp` (Netronome), `gve` (Google GVE) and
-  `mana` (Azure ACCELNET) have no `kmod-*` package. Adding them through a local
-  `package/kernel/extra-nics/` tree does not work here: their drivers make kernel
-  Kconfig prompts visible that none of the shipped config files answers, and
-  `include/kernel-build.mk` exports `FAIL_ON_UNCONFIGURED=1` for the
-  `$(LINUX_DIR)/.modules` target, so `scripts/kconfig/conf --syncconfig` exits 1
-  at the first such prompt (the `... (NEW)` line in the log). A `default y` in
-  the driver's own Kconfig does not help: `conf` looks for a value in `.config`
-  (`SYMBOL_DEF_USER`), not for a default.
+  `mana` (Azure ACCELNET) have no `kmod-*` package. A hand-written package in a
+  local `package/kernel/extra-nics/` tree does not help: their drivers expose
+  kernel Kconfig prompts that no shipped config answers, and OpenWrt builds with
+  `FAIL_ON_UNCONFIGURED=1`, so the build stops at the first `... (NEW)` prompt. A
+  `default y` in the driver's own Kconfig does not count either — `conf` looks for
+  a value in `.config`, not for a default.
 - Every driver in the list ships with the OpenWrt tree, so the kernel config step
   needs no hand-written symbol at all.
 
@@ -139,13 +137,10 @@ nothing in `.diffconfig` asks for them.
 | `gve` | Google gVNIC (GCE) | GCE machine types with `virtio-net` (the default NIC) |
 | `mana` | Microsoft Azure MANA | Azure sizes that expose `hv_netvsc` (Hyper-V netvsc is built in) |
 
-Why not add them anyway: each one would need a hand-written package in a local
-`package/kernel/extra-nics/` tree, and their Kconfig prompts are unanswered by
-any shipped config, so `conf --syncconfig` with `FAIL_ON_UNCONFIGURED=1` aborts
-at the first `(NEW)` symbol — the build would fail in
-`package/kernel/extra-nics` rather than produce a bigger image. Doing it properly
-means maintaining `KCONFIG:=` answers for nine drivers across kernel bumps, which
-is exactly the kind of fork this repository avoids everywhere else.
+Adding them would mean a hand-written package per driver, plus nine `KCONFIG:=`
+answers to keep in sync across every kernel bump — the kind of fork this
+repository avoids everywhere else. The build would also fail at the first
+unanswered prompt rather than produce a bigger image.
 
 If you do need one, add it in your own fork: a `KernelPackage` with
 `KCONFIG:=CONFIG_<DRIVER>` plus an explicit `config CONFIG_<DEP>` answer in the
@@ -155,9 +150,8 @@ it cross-checks, which is the point of the gate.
 
 ## Virtual machines and cloud guests
 
-No kernel config file has to be patched: OpenWrt writes the `KCONFIG` entry of
-every selected `kmod-*` package into the kernel `.config` as `=m` by itself
-(`scripts/package-metadata.pl` → `$(LINUX_DIR)/.config.override`, see
+Nothing needs patching: for every selected `kmod-*` package OpenWrt writes that
+package's `KCONFIG` entry into the kernel `.config` as `=m` by itself (see
 `include/kernel-defaults.mk`).
 
 | Hypervisor / cloud | NIC | State |
@@ -396,17 +390,15 @@ cloned into `package/` from `diy-part1.sh` (for example
 ## Artefacts and flashing
 
 A successful build publishes the firmware directory as an Actions artefact named
-`OpenWrt_firmware_generic_<YYYYMMDDHHMM>` and the same files as a GitHub Release
-tagged `OpenWrt_openwrt-25.12_<YYYYMMDDHHMM>`. Both names are built in
-`build-openwrt.yml` from `DEVICE_NAME` (the profile part of
-`CONFIG_TARGET_x86_64_DEVICE_generic`) and `FILE_DATE` (`date +%Y%m%d%H%M` with
-`TZ: Asia/Shanghai`, so the stamp is Shanghai local time). The release assets are
-the exact contents of `openwrt/bin/targets/x86/64/` (the `packages/` subdirectory
-is removed) plus `SOURCES.txt`; the release notes carry the
-`git log --since=24.hour` of `openwrt` and of every feed the run cloned
-(`feeds/*/.git`: `packages`, `luci`, `routing`, `telephony`, `video` and the two
-Passwall feeds), followed by a `## Source` section pointing at the branch and
-the `.diffconfig` commit.
+`OpenWrt_firmware_generic_<YYYYMMDDHHMM>`, and the same files as a GitHub Release
+tagged `OpenWrt_openwrt-25.12_<YYYYMMDDHHMM>` (both stamps are Shanghai local
+time). The assets are the contents of `openwrt/bin/targets/x86/64/` without its
+`packages/` subdirectory, plus `SOURCES.txt` and `REPRODUCE.txt`. The release
+notes carry the `git log --since=24.hour` of `openwrt` and of every feed the run
+cloned (`feeds/*/.git`: `packages`, `luci`, `routing`, `telephony`, `video` and
+the two Passwall feeds — a feed is a depth-1 clone, so it contributes its head
+commit only), then a `## Source` section with the branch and the `.diffconfig`
+commit.
 
 Four extra files are generated before the upload, so they are in both the
 artefact and the release:
@@ -418,11 +410,10 @@ artefact and the release:
 | `PACKAGES.txt` | installed packages with their versions, from the target `.manifest` |
 | `NOTICES.txt` | licence inventory grouped by licence, from the `apk` database in the rootfs staging tree |
 
-`SHA256SUMS` replaces the `sha256sums` OpenWrt writes into `bin/targets/*/*/`,
-which is removed before the upload: release asset names are unique ignoring
-case, so the two names collide, and the generated file hashes every asset the
-release carries, the SBOM included, where the upstream one covers the image
-directory only.
+OpenWrt also writes a `sha256sums` file into `bin/targets/*/*/`. That one is
+dropped before the upload: GitHub treats release asset names as unique whatever
+their case, so it would collide with `SHA256SUMS`. Ours lists every asset in the
+release, the SBOM included; the upstream file covers the image directory only.
 
 There is no cosign key and no signing secret: provenance comes from
 `actions/attest-build-provenance`, which signs a statement with the workflow's
@@ -483,10 +474,9 @@ checks that it actually comes up — a separate workflow, so a hypervisor proble
 can never block a release.
 
 - It runs after every `Build OpenWrt` whose **build job** succeeded, and on
-  demand with a run id (**Actions → QEMU boot smoke test → Run workflow**). A
-  failed *release* step turns the run red but still leaves the firmware
-  artifact, so that case is tested too; only a cancelled or failed build has
-  nothing to boot.
+  demand with a run id (**Actions → QEMU boot smoke test → Run workflow**). A run
+  that failed while publishing still has its firmware artifact, so that case is
+  tested too; only a cancelled or failed build is skipped.
 - It downloads the `OpenWrt_firmware*` artifact of that run (the same bytes the
   release carries), unpacks it and boots
   `openwrt-x86-64-generic-squashfs-combined.img.gz` with
@@ -518,27 +508,24 @@ Two triggers, both on the built-in token:
 - **`Build OpenWrt`** (`.github/workflows/build-openwrt.yml`, `workflow_dispatch`
   plus `repository_dispatch`) builds on demand, with optional `source_commit` and
   `feed_commit` pins. There is no interactive-session input: the former tmate
-  path (`P3TERX/ssh2actions`) handed anyone who could read the run log a shell
-  with the job token, and gating it properly needs a deployment environment with
-  required reviewers, which is a repository setting — so it was removed instead.
-  Pushing to `main` starts nothing.
+  path (`P3TERX/ssh2actions`) gave anyone who could read the run log a shell with
+  the job token, and gating it properly would need a deployment environment with
+  required reviewers — a repository setting — so it was removed instead. Pushing
+  to `main` starts nothing.
 - **`Update Checker`** (`.github/workflows/update-checker.yml`) runs on
   `workflow_dispatch` and on the **1st and 15th** of every month at 00:00 UTC
-  (the old "30th" schedule silently skipped February). It does not keep its own
-  list of sources: it clones the pinned OpenWrt tree, runs `diy-part1.sh` so
-  `feeds.conf.default` gets the Passwall feeds exactly as in the build, and then
-  clones **every source in that file** at the same URL and branch the build's
-  `feeds update` uses (`openwrt/openwrt` plus the official feeds from
-  `git.openwrt.org`, and the two `Openwrt-Passwall` feeds at `main` — eight
-  today, but a feed added upstream needs no second list here). It writes
-  `name<TAB>full-sha`
-  per source and compares that with the `SOURCES.txt` of the newest release,
-  i.e. with what the last published build actually compiled. A build is
-  dispatched only if one of them really differs, or if a source the build
-  uses is missing from that `SOURCES.txt` and therefore cannot be shown
-  unchanged; with no release yet, it builds once. There is no "seen this
-  combination" marker cache any more: it used to skip the comparison, which also
-  skipped the retry of a build whose release failed and wrote no record.
+  (the old "30th" schedule silently skipped February). It keeps no list of its
+  own: it clones the pinned OpenWrt tree, runs `diy-part1.sh` on it so
+  `feeds.conf.default` gets the Passwall feeds as in the build, then clones every
+  source that file names, at the same URL and branch that `feeds update` uses
+  (`openwrt/openwrt`, the official feeds from `git.openwrt.org`, and the two
+  `Openwrt-Passwall` feeds — eight today, and a feed upstream adds needs no change
+  here). It writes one `name<TAB>full-sha` line per source and compares that with
+  the `SOURCES.txt` of the newest release, i.e. with what the last published build
+  actually compiled. A build is dispatched only if one of them differs, if a
+  source is missing from that `SOURCES.txt`, or if there is no release yet. There
+  is no "seen this combination" cache any more: it used to skip the comparison,
+  and with it the retry of a build whose release had failed.
 
 `Update Checker` dispatches with `${{ github.token }}` (`contents: write`, scoped
 to the `dispatch` job), which works because GitHub's "events triggered by
@@ -564,15 +551,14 @@ ccache/staging tree kept by `klever1988/cachewrtbuild`.
 `contents: write`, `housekeeping` → `actions: write` + `contents: write`); its
 `housekeeping` job is the end-of-run prune, and it is the only place that also
 deletes old releases.
-`Validate` and `QEMU boot smoke test` grant `actions: write` only to their
-`prune-runs-before` / `prune-runs-after` jobs. Every one of those jobs uses
-nothing but `${{ github.token }}` — no PAT, no secret, no cache key — so a fresh
-fork runs them unchanged; on a pull request from a fork the token is read-only,
-in which case `scripts/prune-runs.sh` warns instead of failing.
+`Validate` and `QEMU boot smoke test` give `actions: write` to their prune jobs
+only, and all of these jobs use just the built-in token: no PAT, no secret, no
+cache key — a fresh fork runs them unchanged. On a fork's pull request the token
+is read-only; `scripts/prune-runs.sh` then warns and the job still passes.
 
 ## Retention (caches, runs, artifacts, releases)
 
-Policies, all enforced automatically and all deliberate:
+All of this is automatic, and all of it is deliberate:
 
 | Object | Policy | Enforced by |
 | --- | --- | --- |
@@ -582,11 +568,11 @@ Policies, all enforced automatically and all deliberate:
 | artifacts | deleted after 30 days, plus every artifact of a deleted run | `scripts/prune-artifacts.sh 30` |
 | releases | newest five kept by the build; the checker also drops anything older than 60 days with fewer than two downloads | `prune` job, `Update Checker` housekeeping |
 
-Deleting a run also deletes its logs and artifacts, which is why the run count
-is the main lever; deleting a run does **not** touch the release itself. A failed
-build still trims the run list — `prune-runs-after` has `always()` — but the
-caches and artifacts are only pruned after a successful build, because the caches
-of the last successful build are what make the next attempt cheap.
+Deleting a run also deletes its logs and artifacts, which is why the run count is
+the main lever; it never touches the release itself. A failed build still trims
+the run list (the prune job runs with `always()`), but caches and artifacts are
+only pruned after a successful build — the cache from the last good build is what
+makes the next attempt cheap.
 
 
 ### Reproducing a published release
@@ -597,11 +583,11 @@ checks out exactly those commits, so a rerun cannot drift to a newer branch head
 1. `Resolve the source revision` pins the commit of `openwrt/openwrt` (the head
    of `openwrt-25.12`, or the `source_commit` input when one is given) and
    `Clone source code` checks it out detached and verifies `HEAD`.
-2. `Update feeds` clones the feeds with `git clone --depth 1` (that is what
-   upstream `scripts/feeds` does), so a shallow clone does not contain an older
-   pinned commit; `Pin feeds to the requested revisions` fetches that commit
-   first (and unshallows the clone when the server refuses a bare SHA fetch),
-   then checks each feed out at the `feed_commit` SHA and verifies `HEAD`.
+2. `Update feeds` clones the feeds with `git clone --depth 1`, as upstream
+   `scripts/feeds` does, so an older pinned commit is not there yet. `Pin feeds to
+   the requested revisions` fetches that commit first (unshallowing the clone if
+   the server will not serve a bare SHA), then checks each feed out and verifies
+   `HEAD`.
 3. `Record source revisions` writes `SOURCES.txt` — `name ref commit url` per
    repository, plus the `build-config` line of this repository — and fails the
    build if any recorded commit differs from the checked-out tree.
@@ -672,9 +658,9 @@ hides exactly the prompt that breaks CI.
 | `diy-part1.sh` | Hook before `feeds update`: adds the two Passwall feeds |
 | `diy-part2.sh` | Hook after `feeds install`: serial console fix, removes unusable protocol UI modules |
 | `files/` | Files copied into the image (`etc/uci-defaults/50-luci-theme` theme default, `etc/sysctl.d/20-ipv6-accept-ra.conf` IPv6 sysctl) |
-| `.github/workflows/validate.yml` | Pull-request validation: lint, config check, `make defconfig` dry run (no compile) |
+| `.github/workflows/validate.yml` | Validation on pull requests and `main`: lint, config check, `make defconfig` dry run (no compile) |
 | `.github/workflows/build-openwrt.yml` | Main build: source, feeds, compile, release upload, housekeeping |
-| `.github/workflows/update-checker.yml` | Monthly upstream check, dispatch, release pruning |
+| `.github/workflows/update-checker.yml` | Twice-monthly upstream check, dispatch, release pruning |
 | `.github/dependabot.yml` | Weekly PRs that move the pinned action SHAs to the next release |
 | `scripts/validate-diffconfig.sh` | Static check of `.diffconfig` (syntax, duplicates, kmod names vs upstream) |
 | `scripts/check-defconfig.sh` | Verifies every requested symbol survived `make defconfig` |
@@ -710,9 +696,9 @@ release; it runs with `contents: read`. The firmware build stays manual
 checker when upstream moves.
 
 `Build OpenWrt` runs the same `scripts/check-defconfig.sh` check itself, right
-after `make defconfig` and before `make download`: a package that upstream
-renamed or dropped between two weekly Validate runs would otherwise be skipped
-silently and the release would ship without it, an hour later.
+after `make defconfig` and before `make download`. Otherwise a package that
+upstream renamed or dropped between two weekly Validate runs would be skipped
+silently, and the release would ship without it.
 
 ## FAQ
 
@@ -764,11 +750,11 @@ cat /proc/consoles
 
 ### Do I need a personal access token or any repository secret?
 
-No. `Update Checker` dispatches the build with the built-in `GITHUB_TOKEN`
-(`contents: write`), which is allowed to start a workflow because
-`repository_dispatch` is one of the two events GitHub exempts from the
-"`GITHUB_TOKEN` does not trigger workflows" rule. Release upload, release
-pruning and cache cleanup all use the same token. A fresh fork works as it is.
+No. Everything runs on the built-in `GITHUB_TOKEN`: the update checker dispatches
+with it (`contents: write`), which works because GitHub lets `repository_dispatch`
+and `workflow_dispatch` start a run even when the token belongs to the workflow
+itself. Release upload, pruning and cache cleanup use the same token. A fresh fork
+works as it is.
 
 ### How do I update the firmware on a running box?
 

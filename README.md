@@ -11,17 +11,16 @@
 [![NIC drivers](https://img.shields.io/badge/NIC%20drivers-92-blueviolet)](DOCS.md#network-drivers-92-packages)
 [![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-The image is built from the official `openwrt/openwrt` branch `openwrt-25.12`
-with kernel 6.12, from the official feeds plus two Passwall feeds, and is
-configured by `.diffconfig` alone: Passwall with sing-box and Hysteria 2, seven
-languages (the six official UN languages plus Traditional Chinese), three LuCI
-themes and 92 network driver packages (69 wired, 3 virtual, 20 PHY) are added
-on top of the stock `x86/64` generic target. Every package
-comes from an official feed or from the Passwall feed, so there is no forked
-package tree. A successful run publishes the images both as an Actions artefact
-and as a GitHub Release. Upstream sources are untouched apart from the two edits
-`diy-part2.sh` makes: a `sed` that drops the serial console, and the removal of
-two LuCI protocol modules whose back end does not exist.
+The image comes from the official `openwrt/openwrt` branch `openwrt-25.12`
+(kernel 6.12) and the official feeds plus two Passwall feeds. Everything else is
+set in `.diffconfig`: Passwall with sing-box and Hysteria 2, seven languages (the
+six official UN languages plus Traditional Chinese), three LuCI themes and 92
+network driver packages (69 wired, 3 virtual, 20 PHY), on top of the stock
+`x86/64` generic target. No package is forked — every one comes from an official
+feed or from the Passwall feed. A successful run publishes the images as an
+Actions artefact and as a GitHub Release. The only changes to upstream sources are
+the two edits `diy-part2.sh` makes: a `sed` that drops the serial console, and the
+removal of two LuCI protocol modules whose back end does not exist.
 
 ## Requirements
 
@@ -39,9 +38,8 @@ instead needs a Linux host with the OpenWrt build dependencies (`gawk`, `flex`,
 ## Use
 
 Trigger **Actions → Build OpenWrt → Run workflow**, leave `source_commit` and
-`feed_commit` empty, and wait about an hour (a cache-less first build takes a
-little longer; the run reuses the `dl/` mirror and the ccache of the previous
-build).
+`feed_commit` empty, and wait about an hour. The very first build takes longer;
+later runs reuse the package downloads and the compiler cache of the previous one.
 The result appears as the artefact `OpenWrt_firmware_generic_<YYYYMMDDHHMM>` in
 the run and as a release tagged `OpenWrt_openwrt-25.12_<YYYYMMDDHHMM>` under
 **Releases**. To rebuild a release from exactly the same sources, paste the two
