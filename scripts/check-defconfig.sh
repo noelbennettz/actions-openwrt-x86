@@ -46,13 +46,26 @@ while IFS= read -r raw || [ -n "$raw" ]; do
   [ -z "$line" ] && continue
 
   if [ "${line:0:1}" = '#' ]; then
-    [[ $line =~ ^#[[:space:]]+CONFIG_([A-Za-z0-9_]+)[[:space:]]+is[[:space:]]+not[[:space:]]+set$ ]] || continue
-    sym=${BASH_REMATCH[1]}
-    want='n'
-  elif [[ $line =~ ^CONFIG_([A-Za-z0-9_]+)=(.*)$ ]]; then
+    # '# CONFIG_FOO is not set' is a real statement; anything else is a comment.
+    if [[ $line =~ ^#[[:space:]]+CONFIG_([A-Za-z0-9_.-]+)[[:space:]]+is[[:space:]]+not[[:space:]]+set$ ]]; then
+      sym=${BASH_REMATCH[1]}
+      want='n'
+    else
+      continue
+    fi
+  elif [[ $line =~ ^CONFIG_([A-Za-z0-9_.-]+)=(.*)$ ]]; then
     sym=${BASH_REMATCH[1]}
     want=${BASH_REMATCH[2]}
+    # Drop a trailing comment ('=y   # note'); kconfig only looks at the first
+    # character for bool/tristate values, and .diffconfig uses those notes.
+    if [[ $want =~ ^([^[:space:]]+)[[:space:]]+# ]]; then
+      want=${BASH_REMATCH[1]}
+    fi
   else
+    # Not silently skipped: an unparsed line would otherwise shrink the number
+    # of checked symbols without anybody noticing.
+    echo "::error::$diffconfig:$lineno: not a Kconfig line: '$line'"
+    errors=$((errors + 1))
     continue
   fi
 
