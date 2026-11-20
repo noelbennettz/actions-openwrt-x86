@@ -303,6 +303,11 @@ CONFIG_PACKAGE_amd64-microcode=y
 # include/kernel-build.mk) and the build dies in package/kernel/extra-nics.
 # They are server/cloud-only adapters, so they were dropped instead of kept at
 # the price of a fragile local kmod tree.
+#
+# scripts/validate-diffconfig.sh now cross-checks every kmod-* selected here
+# against the KernelPackage/ definitions of the pinned upstream branch, so a
+# renamed, dropped or misspelled driver fails the pull request instead of a
+# two-hour build. DOCS.md has the per-driver list and the alternatives.
 
 # ---- Intel: 12 ----
 # e100/e1000/e1000e = PRO/100, 8254x, 8257x/8256x

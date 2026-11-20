@@ -10,6 +10,7 @@ the short [README](README.md) lives here.
 
 - [What is in the image](#what-is-in-the-image)
 - [Network drivers (92 packages)](#network-drivers-92-packages)
+- [NICs that are not in the image](#nics-that-are-not-in-the-image)
 - [Virtual machines and cloud guests](#virtual-machines-and-cloud-guests)
 - [WAN protocols and IPv6](#wan-protocols-and-ipv6)
 - [iptables / ip6tables support](#iptables--ip6tables-support)
@@ -116,6 +117,39 @@ Notes:
   (`SYMBOL_DEF_USER`), not for a default.
 - Every driver in the list ships with the OpenWrt tree, so the kernel config step
   needs no hand-written symbol at all.
+
+### NICs that are not in the image
+
+Nine server and cloud adapters have no `kmod-*` package anywhere in the official
+`openwrt-25.12` tree — `package/kernel/linux/modules/*.mk` does not define a
+`KernelPackage/` for any of them (checked by `scripts/validate-diffconfig.sh`,
+which fails the pull request if a `CONFIG_PACKAGE_kmod-*` in `.diffconfig` has no
+upstream definition). They are therefore not built, and the image still builds:
+nothing in `.diffconfig` asks for them.
+
+| Driver | Hardware | What to use instead |
+| --- | --- | --- |
+| `enic` | Cisco VIC (UCS B/C series) | a supported PCIe NIC passed through, or `e1000e`/`vmxnet3` in a VM |
+| `ionic` | AMD Pensando DSC-100/200 | the NIC's management port, or a supported card |
+| `idpf` | Intel Infrastructure Processing Unit (E2000) | `ice`/`i40e` on the host-facing port |
+| `libwx`, `ngbe`, `txgbe` | Wangxun 1G/10G (NGBe/TXGBe) | another PCIe NIC; `8139too`/`r8169` for the common desktop cards |
+| `nfp` | Netronome Agilio SmartNIC | the host's onboard NIC |
+| `gve` | Google gVNIC (GCE) | GCE machine types with `virtio-net` (the default NIC) |
+| `mana` | Microsoft Azure MANA | Azure sizes that expose `hv_netvsc` (Hyper-V netvsc is built in) |
+
+Why not add them anyway: each one would need a hand-written package in a local
+`package/kernel/extra-nics/` tree, and their Kconfig prompts are unanswered by
+any shipped config, so `conf --syncconfig` with `FAIL_ON_UNCONFIGURED=1` aborts
+at the first `(NEW)` symbol — the build would fail in
+`package/kernel/extra-nics` rather than produce a bigger image. Doing it properly
+means maintaining `KCONFIG:=` answers for nine drivers across kernel bumps, which
+is exactly the kind of fork this repository avoids everywhere else.
+
+If you do need one, add it in your own fork: a `KernelPackage` with
+`KCONFIG:=CONFIG_<DRIVER>` plus an explicit `config CONFIG_<DEP>` answer in the
+package, then `CONFIG_PACKAGE_kmod-<driver>=y` in `.diffconfig` — and expect
+`scripts/validate-diffconfig.sh` to object until the package exists in the tree
+it cross-checks, which is the point of the gate.
 
 ## Virtual machines and cloud guests
 
@@ -553,7 +587,9 @@ does not work either: their drivers expose kernel Kconfig prompts that no shippe
 config file answers, and OpenWrt runs `conf --syncconfig` with
 `FAIL_ON_UNCONFIGURED=1`, so the build stops at the first `... (NEW)` line. Use a
 machine type that exposes `virtio-net`, `hv_netvsc`, `vmxnet3`, `e1000e` or
-`amazon-ena` instead.
+`amazon-ena` instead — see
+[NICs that are not in the image](#nics-that-are-not-in-the-image) for the
+per-driver alternatives.
 
 ### Why is the serial console disabled, and how do I get it back?
 
