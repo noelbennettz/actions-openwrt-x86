@@ -1,0 +1,97 @@
+#
+# Copyright (c) 2026, MIT (see /LICENSE)
+#
+# File: .github/workflows/smoke-qemu.yml
+# Description: Boot a published firmware image in QEMU and check that LuCI
+# answers. Separate from the build on purpose: a hypervisor problem must never
+# stop a firmware release, and a failed boot here is a smoke-test signal, not a
+# blocked release.
+#
+# It runs after every successful 'Build OpenWrt', and on demand for any build
+# run id. The image that is booted is the artifact the build uploaded - i.e.
+# the same bytes that go into the release.
+#
+name: QEMU boot smoke test
+
+on:
+  workflow_run:
+    workflows: ["Build OpenWrt"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Build OpenWrt run id to test (empty = newest successful run)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  # Reading the artifacts of another workflow run.
+  actions: read
+
+jobs:
+  boot:
+    name: Boot the image and probe LuCI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    # A failed build has no firmware to boot; everything else is worth testing.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+    - name: Install QEMU
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        set -euo pipefail
+        sudo apt-get -qq update
+        sudo apt-get -qq install -y qemu-system-x86 curl unzip
+        qemu-system-x86_64 --version | head -n 1
+
+    - name: Download the firmware artifact of that build
+      env:
+        GH_TOKEN: ${{ github.token }}
+        # workflow_run gives the triggering run; a manual dispatch names one, or
+        # takes the newest successful build.
+        RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+      run: |
+        set -euo pipefail
+        if [ -z "$RUN_ID" ]; then
+          RUN_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build-openwrt.yml/runs?status=success&per_page=1" \
+            --jq '.workflow_runs[0].id')
+          echo "no run id given; using the newest successful build: $RUN_ID"
+        fi
+        artifact_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" \
+          --jq '[.artifacts[] | select(.name | startswith("OpenWrt_firmware"))] | sort_by(.created_at) | last | .id // empty')
+        if [ -z "$artifact_id" ]; then
+          echo "::error::run $RUN_ID has no OpenWrt_firmware* artifact"
+          exit 1
+        fi
+        echo "downloading artifact $artifact_id of run $RUN_ID"
+        # The REST endpoint answers with a redirect to blob storage, hence -L.
+        curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+          "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+          -o "$RUNNER_TEMP/firmware.zip"
+        unzip -q "$RUNNER_TEMP/firmware.zip" -d firmware
+        ls -la firmware
+
+    - name: Boot it and wait for LuCI
+      env:
+        # QEMU without KVM on a hosted runner: give the guest time to come up.
+        QEMU_TIMEOUT: '900'
+        KEEP_QEMU_WORKDIR: '1'
+      run: |
+        set -euo pipefail
+        dir=$(dirname "$(find firmware -name 'openwrt-*-combined.img.gz' -o -name 'openwrt-*-combined.img' | head -n 1)")
+        echo "booting the image in $dir"
+        scripts/qemu-smoke.sh "$dir" --timeout "$QEMU_TIMEOUT"
+
+    - name: Keep the serial log
+      if: always()
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      with:
+        name: qemu-serial-log
+        path: |
+          firmware/**/qemu-serial.log
+        if-no-files-found: warn
