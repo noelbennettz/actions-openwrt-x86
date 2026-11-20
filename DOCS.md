@@ -408,6 +408,38 @@ replaces the root filesystem and keeps no settings; writing the image to the
 disk with `dd` replaces the partition table as well. Keep the previous image
 file until the new one has booted.
 
+## Boot smoke test (QEMU)
+
+`.github/workflows/smoke-qemu.yml` boots the image the build just uploaded and
+checks that it actually comes up — a separate workflow, so a hypervisor problem
+can never block a release.
+
+- It runs after every successful `Build OpenWrt`, and on demand with a run id
+  (**Actions → QEMU boot smoke test → Run workflow**).
+- It downloads the `OpenWrt_firmware*` artifact of that run (the same bytes the
+  release carries), unpacks it and boots
+  `openwrt-x86-64-generic-squashfs-combined.img.gz` with
+  `qemu-system-x86_64 -machine q35 -m 512M -display none`.
+- The guest's LAN subnet is handed to QEMU's user networking
+  (`net=192.168.1.0/24,host=192.168.1.2`), so the host reaches the guest's
+  `192.168.1.1:80` through slirp with a `hostfwd` on port 8080. The test passes
+  when `/` answers with 200/302/307/308 **and** `/cgi-bin/luci/` serves a page
+  that mentions LuCI.
+- Serial output is captured to `qemu-serial.log` and uploaded as the
+  `qemu-serial-log` artifact. **It is usually empty**, and that is expected:
+  `diy-part2.sh` strips `console=ttyS0` from the kernel command line on purpose,
+  so the image has no serial console to talk to. The HTTP probe is the real
+  check; the log is there for the case where someone built with
+  `ENABLE_SERIAL_CONSOLE=1`.
+- No KVM on hosted runners, so the boot runs under TCG with a 15-minute budget.
+  `scripts/qemu-smoke.sh` also runs locally (`scripts/qemu-smoke.sh <dir>`) and
+  exits 0 with a warning when `qemu-system-x86_64` is not installed.
+
+What it does **not** check: the guest's own package list (`apk info -v`) and
+listening sockets, because there is no serial console and no password to log
+in with. `PACKAGES.txt` in the release covers the package list from the target
+manifest instead.
+
 ## Updating and rebuilding
 
 Two triggers, both on the built-in token:
@@ -497,6 +529,7 @@ hides exactly the prompt that breaks CI.
 | `scripts/validate-diffconfig.sh` | Static check of `.diffconfig` (syntax, duplicates, kmod names vs upstream) |
 | `scripts/check-defconfig.sh` | Verifies every requested symbol survived `make defconfig` |
 | `scripts/prune-runs.sh` | Keeps the newest N runs of the running workflow |
+| `scripts/qemu-smoke.sh` | Boots a built image in QEMU and probes LuCI from the host |
 | `.editorconfig` | Editor defaults (UTF-8, LF, final newline) |
 | `README.md` | Short overview: requirements, use, documentation index, licence |
 | `DOCS.md` | This file |

@@ -63,6 +63,7 @@ plain writable root without that reset path. On first boot the box answers at
 | [`.github/workflows/build-openwrt.yml`](.github/workflows/build-openwrt.yml) | The build: checkout, feeds, compile, upload, housekeeping |
 | [`.github/workflows/validate.yml`](.github/workflows/validate.yml) | Pull-request checks: lint, `.diffconfig` validation, `make defconfig` dry run (no compile) |
 | [`.github/workflows/update-checker.yml`](.github/workflows/update-checker.yml) | Monthly upstream check that dispatches a build |
+| [`.github/workflows/smoke-qemu.yml`](.github/workflows/smoke-qemu.yml) | Boots a published image in QEMU and checks that LuCI answers |
 
 ## Licence
 
