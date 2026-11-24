@@ -19,6 +19,7 @@ in the image, how it is built, and how the repository is run.
 - [Languages](#languages)
 - [LuCI themes](#luci-themes)
 - [Artefacts and flashing](#artefacts-and-flashing)
+- [Boot smoke test (QEMU)](#boot-smoke-test-qemu)
 - [Updating and rebuilding](#updating-and-rebuilding)
 - [Retention (caches, runs, artifacts, releases)](#retention-caches-runs-artifacts-releases)
 - [Repository layout](#repository-layout)
@@ -484,7 +485,7 @@ can never block a release.
 - The guest's LAN subnet is handed to QEMU's user networking
   (`net=192.168.1.0/24,host=192.168.1.2`), so the host reaches the guest's
   `192.168.1.1:80` through slirp with a `hostfwd` on port 8080. The test passes
-  when `/` answers with 200/302/307/308 **and** `/cgi-bin/luci/` serves a page
+  when `/` answers with 200/302/303/307/308 **and** `/cgi-bin/luci/` serves a page
   that mentions LuCI.
 - Serial output is captured to `qemu-serial.log` and uploaded as the
   `qemu-serial-log` artifact. **It is usually empty**, and that is expected:
@@ -537,14 +538,13 @@ ccache/staging tree kept by `klever1988/cachewrtbuild`.
 
 ### Permissions
 
-`Build OpenWrt` is split into three jobs so that writing is scoped:
+`Build OpenWrt` is split into five jobs so that writing is scoped:
 
 | Job | Permissions | Why |
 | --- | --- | --- |
 | `build` | `contents: read`, `id-token: write`, `attestations: write` | compiles and attests the images; it cannot create, delete or overwrite anything in the repository |
 | `release` | `contents: write` | the only job that creates the release |
 | `prune` | `actions: write`, `contents: write` | deletes caches, artifacts and old releases |
-
 | `prune-runs-before` / `prune-runs-after` | `actions: write`, `contents: read` | keep the three newest runs of this workflow, at the start and again at the end of every run |
 
 `Update Checker` is split the same way (`check` → `read`, `dispatch` →
@@ -661,9 +661,11 @@ hides exactly the prompt that breaks CI.
 | `.github/workflows/validate.yml` | Validation on pull requests and `main`: lint, config check, `make defconfig` dry run (no compile) |
 | `.github/workflows/build-openwrt.yml` | Main build: source, feeds, compile, release upload, housekeeping |
 | `.github/workflows/update-checker.yml` | Twice-monthly upstream check, dispatch, release pruning |
+| `.github/workflows/smoke-qemu.yml` | Boots a published image in QEMU and probes LuCI |
 | `.github/dependabot.yml` | Weekly PRs that move the pinned action SHAs to the next release |
 | `scripts/validate-diffconfig.sh` | Static check of `.diffconfig` (syntax, duplicates, kmod names vs upstream) |
 | `scripts/check-defconfig.sh` | Verifies every requested symbol survived `make defconfig` |
+| `scripts/image-inventory.sh` | Writes `PACKAGES.txt` and `NOTICES.txt` from the build tree |
 | `scripts/prune-runs.sh` | Keeps the newest N runs of the running workflow |
 | `scripts/prune-artifacts.sh` | Deletes artifacts older than N days |
 | `scripts/qemu-smoke.sh` | Boots a built image in QEMU and probes LuCI from the host |

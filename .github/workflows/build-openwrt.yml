@@ -38,13 +38,9 @@ env:
   # the current passwall packages need it (sing-box >= 1.25.5, hysteria >= 1.26,
   # geoview >= 1.25). The 24.10 branch only ships Go 1.23 and cannot build them.
   REPO_BRANCH: openwrt-25.12
-  FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: .diffconfig
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false
-  UPLOAD_FIRMWARE: true
-  UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
 
 jobs:
@@ -187,9 +183,8 @@ jobs:
     - name: Load custom feeds
       working-directory: openwrt
       run: |
-        if [ -e "../main-repo/$FEEDS_CONF" ]; then
-          mv "../main-repo/$FEEDS_CONF" feeds.conf.default
-        fi
+        # The repository ships no feeds.conf.default of its own: diy-part1.sh
+        # edits the upstream file in place.
         chmod +x "../main-repo/$DIY_P1_SH"
         "../main-repo/$DIY_P1_SH"
 
@@ -355,13 +350,6 @@ jobs:
       if: (!cancelled())
       run: df -hT
 
-    - name: Upload bin directory
-      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
-      with:
-        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: openwrt/bin
-
     - name: Record source revisions
       if: steps.compile.outputs.status == 'success' && !cancelled()
       working-directory: openwrt
@@ -435,7 +423,7 @@ jobs:
     - name: Organize files
       working-directory: openwrt
       id: organize
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: steps.compile.outputs.status == 'success' && !cancelled()
       run: |
         cd bin/targets/*/*/
         rm -rf packages
@@ -517,7 +505,7 @@ jobs:
     - name: Generate release tag
       working-directory: openwrt
       id: tag
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: steps.compile.outputs.status == 'success' && !cancelled()
       run: |
         touch release.txt
         echo "release_tag=OpenWrt_${REPO_BRANCH}_$(date +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"

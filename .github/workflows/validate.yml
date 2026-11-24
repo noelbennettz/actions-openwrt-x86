@@ -77,7 +77,6 @@ jobs:
         # Full history, so the diff check can reach the base commit.
         fetch-depth: 0
 
-
     - name: Install actionlint and shellcheck (pinned, checksum verified)
       run: |
         set -euo pipefail
@@ -164,7 +163,6 @@ jobs:
           echo "::error::conflict markers found (files listed above)"
           exit 1
         fi
-
 
   config:
     name: Config and feeds metadata

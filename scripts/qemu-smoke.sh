@@ -21,8 +21,15 @@
 #
 set -euo pipefail
 
-firmware=${1:?usage: qemu-smoke.sh <firmware-dir> [--timeout SECONDS] [--port PORT]}
-shift || true
+case "${1:-}" in
+  -h|--help)
+    sed -n '3,21p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+esac
+
+firmware=${1:?usage: qemu-smoke.sh <firmware-dir> [--timeout SECONDS] [--port PORT] [--image PATH]}
+shift
 
 timeout_s=${QEMU_TIMEOUT:-600}
 host_port=${HOST_PORT:-8080}
@@ -33,7 +40,6 @@ while [ "$#" -gt 0 ]; do
     --timeout) timeout_s=${2:?--timeout needs a number}; shift 2 ;;
     --port)    host_port=${2:?--port needs a number}; shift 2 ;;
     --image)   image=${2:?--image needs a path}; shift 2 ;;
-    -h|--help) sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)         echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done

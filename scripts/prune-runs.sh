@@ -22,7 +22,7 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 0
 fi
 
-# Inside a run: owner/repo/.github/workflows/build.yml@refs/heads/main
+# Inside a run: owner/repo/.github/workflows/build-openwrt.yml@refs/heads/main
 workflow_ref="${GITHUB_WORKFLOW_REF:-}"
 workflow="${workflow_ref%%@*}"
 workflow="$(basename "$workflow")"

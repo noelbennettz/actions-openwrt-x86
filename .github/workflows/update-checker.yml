@@ -11,10 +11,11 @@
 # Third-party actions are pinned by full commit SHA (tag in the trailing
 # comment); see the note at the top of build-openwrt.yml.
 #
-# Three jobs, so writing is scoped to the ones that need it:
-#   check         reads upstream commit ids (contents: read)
-#   dispatch      asks for a build (contents: write, only when something moved)
-#   housekeeping  prunes runs and releases (actions: write, contents: write)
+# Four jobs, so writing is scoped to the ones that need it:
+#   prune-runs-before  keeps the three newest runs (actions: write)
+#   check              reads upstream commit ids (contents: read)
+#   dispatch           asks for a build (contents: write, only when something moved)
+#   housekeeping       prunes runs and releases (actions: write, contents: write)
 #
 # The source list comes from the pinned tree itself (feeds.conf.default after
 # diy-part1.sh), not from a table here; see the 'Get Commit Hash' step.
