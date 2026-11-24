@@ -1,6 +1,6 @@
 # actions-openwrt-x86 — build and image documentation
 
-> Applies to the current `main`. Each release's `SOURCES.txt` names its
+> This tree documents the current `main`. Each release's `SOURCES.txt` names its
 > `build-config` commit, and the `DOCS.md` at that commit is the documentation
 > the release was built with.
 

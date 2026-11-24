@@ -1,7 +1,7 @@
 # actions-openwrt-x86 — builds an OpenWrt x86/64 image from official source on GitHub Actions
 
-> Applies to the current `main`. Each release pins the sources it was built from
-> in `SOURCES.txt`, whose `build-config` line names the commit of this
+> This tree documents the current `main`. Each release pins the sources it was
+> built from in `SOURCES.txt`, whose `build-config` line names the commit of this
 > repository — the `DOCS.md` at that commit is the documentation that release
 > was built with.
 
