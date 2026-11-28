@@ -65,6 +65,7 @@ plain writable root without that reset path. On first boot the box answers at
 | --- | --- |
 | [DOCS.md](DOCS.md) | Image contents, all 92 network drivers, VM and cloud guests, WAN protocols and IPv6, iptables, Passwall, languages, themes, artefacts, rebuilding, repository layout, FAQ |
 | [SOURCE.md](SOURCE.md) | Where the source of a published image is (GPL-2.0 offer, `SOURCES.txt`) |
+| [SECURITY.md](SECURITY.md) | What is maintained here and what belongs upstream, the supported version, and how to report a vulnerability. |
 | [.diffconfig](.diffconfig) | The complete build configuration |
 | [`.github/workflows/build-openwrt.yml`](.github/workflows/build-openwrt.yml) | The build: checkout, feeds, compile, upload, housekeeping |
 | [`.github/workflows/validate.yml`](.github/workflows/validate.yml) | Pull-request checks: lint, `.diffconfig` validation, `make defconfig` dry run (no compile) |
