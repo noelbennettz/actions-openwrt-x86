@@ -1,4 +1,4 @@
-# actions-openwrt-x86 — build and image documentation
+# actions-openwrt-x86 documentation
 
 > This tree documents the current `main`. Each release's `SOURCES.txt` names its
 > `build-config` commit, and the `DOCS.md` at that commit is the documentation
@@ -23,6 +23,7 @@ in the image, how it is built, and how the repository is run.
 - [Updating and rebuilding](#updating-and-rebuilding)
 - [Retention (caches, runs, artifacts, releases)](#retention-caches-runs-artifacts-releases)
 - [Repository layout](#repository-layout)
+- [Removing it](#removing-it)
 - [FAQ](#faq)
 - [Credits](#credits)
 
@@ -701,6 +702,26 @@ checker when upstream moves.
 after `make defconfig` and before `make download`. Otherwise a package that
 upstream renamed or dropped between two weekly Validate runs would be skipped
 silently, and the release would ship without it.
+
+## Removing it
+
+Nothing on the router belongs to this repository: the image is OpenWrt with
+packages from the official feeds, so removing it means flashing something else.
+What each action removes:
+
+| Action | Removes | Keeps |
+| --- | --- | --- |
+| **System → Backup / Flash Firmware → Perform reset** (squashfs only) | every configuration file; the overlay is wiped | the firmware, which comes back up at `192.168.1.1` with no password |
+| `sysupgrade -n <stock image>`, from LuCI or SSH | the root filesystem and every settings file | the bootloader and the partition table |
+| `dd` of the image onto the disk | the partition table as well | nothing on that disk |
+
+The exact commands, the squashfs/ext4 caveat and why there is no rollback
+partition are in [Artefacts and flashing](#artefacts-and-flashing).
+
+On the machine that builds it there is nothing to uninstall: no local toolchain,
+no service and no cache outside GitHub Actions. On GitHub the release and its
+artefacts are pruned by the retention table above; deleting a fork removes its
+workflows, not the releases of this repository.
 
 ## FAQ
 
